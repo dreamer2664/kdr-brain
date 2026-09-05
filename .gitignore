@@ -1,0 +1,13 @@
+# Build outputs: reproducible with `make` + `python3 scripts/pack.py`; published as GitHub Release assets
+release/brain.kdr
+release/kdr-brain
+release/kdr-brain-portable
+# generated from src/index.html by scripts/embed_html.py (make regenerates it)
+src/webui.c
+# python / editor noise
+__pycache__/
+*.pyc
+.DS_Store
+# never commit credentials
+.kdr-secrets/
+*.token

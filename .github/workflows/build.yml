@@ -1,0 +1,63 @@
+# Rebuilds the whole brain from source on every push and publishes the artifacts
+# as a rolling GitHub Release called "latest". Free on public repos (unlimited minutes).
+name: build
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["docs/**", "*.md"]
+  workflow_dispatch:
+
+permissions:
+  contents: write   # needed to create the release
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install numpy
+
+      - name: Cache the two fp32 checkpoints (224 MB, downloaded once)
+        uses: actions/cache@v4
+        with:
+          path: /tmp/build
+          key: hf-checkpoints-v1
+
+      - name: Download checkpoints from Hugging Face (public, no login)
+        run: |
+          mkdir -p /tmp/build/reader
+          [ -s /tmp/build/model.safetensors ] || curl -fL --retry 3 -o /tmp/build/model.safetensors \
+            https://huggingface.co/sentence-transformers/multi-qa-MiniLM-L6-cos-v1/resolve/main/model.safetensors
+          [ -s /tmp/build/reader/model.safetensors ] || curl -fL --retry 3 -o /tmp/build/reader/model.safetensors \
+            https://huggingface.co/deepset/minilm-uncased-squad2/resolve/main/model.safetensors
+          ls -la /tmp/build /tmp/build/reader
+
+      - name: Compile the inference engine (static binary)
+        run: make
+
+      - name: Quantize + embed + pack -> release/brain.kdr
+        run: python3 scripts/pack.py
+
+      - name: Size gate (everything must stay under 80 MB)
+        run: |
+          total=$(( $(stat -c %s release/brain.kdr) + $(stat -c %s release/kdr-brain) ))
+          echo "brain.kdr + kdr-brain = $total bytes"
+          test "$total" -lt 80000000
+
+      - name: Quality gate (75-question test set, needs >= 72 exact answers)
+        run: python3 scripts/eval_c.py --strict
+
+      - name: Publish rolling release "latest"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest -y --cleanup-tag || true
+          sleep 3
+          gh release create latest release/brain.kdr release/kdr-brain \
+            --title "kdr-brain build #${{ github.run_number }}" \
+            --notes "Built from commit ${{ github.sha }} on $(date -u +%Y-%m-%d). Assets: brain.kdr (model + knowledge) and kdr-brain (static Linux x86-64 binary). Restore with: sh scripts/restore.sh"

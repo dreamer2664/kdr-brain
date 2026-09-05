@@ -1,0 +1,562 @@
+u<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>The Kingdom of Dutch Robloxia | Royal Wiki</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=EB+Garamond:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+
+</head>
+<body>
+
+<div id="preloader">
+  <svg width="80" height="80" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="40" cy="40" r="38" stroke="#c9a227" stroke-width="2" fill="none" stroke-dasharray="180 60"/><text x="40" y="52" text-anchor="middle" font-size="36" fill="#c9a227">♛</text></svg>
+  <p>DUTCH ROBLOXIA</p>
+</div>
+
+<button id="hamburger" onclick="document.getElementById('sidebar').classList.toggle('open')">☰</button>
+
+<div id="shell">
+  <aside id="sidebar">
+    <div id="brand">
+      <img src="data:removed" alt="Crest">
+      <div class="word">DUTCH<br>ROBLOXIA</div>
+    </div>
+    <ul id="navlist">
+      <li><a href="#home" data-p="home">⌂ Home</a></li>
+      <li><a href="#crown" data-p="crown">♛ The Crown</a></li>
+      <li><a href="#biography" data-p="biography">📜 King Nicholas V</a></li>
+      <li><a href="#government" data-p="government">⚖ Government</a></li>
+      <li><a href="#realm" data-p="realm">🗺 The Realm</a></li>
+      <li><a href="#military" data-p="military">⚔ Military</a></li>
+      <li><a href="#economy" data-p="economy">⛁ Economy</a></li>
+      <li><a href="#diplomacy" data-p="diplomacy">🤝 Diplomacy</a></li>
+      <li><a href="#citizens" data-p="citizens">☺ Notable Citizens</a></li>
+      <li><a href="#laws" data-p="laws">📜 Laws of the Realm</a></li>
+      <li><a href="#music" data-p="music">🎵 Royal Songbook</a></li>
+      <li><a href="#games" data-p="games">🎮 Roblox Games</a></li>
+    </ul>
+    <div id="search-wrap">
+      <input id="search-input" type="text" placeholder="Search the wiki..." autocomplete="off">
+      <div id="search-results"></div>
+    </div>
+    <div id="theme-wrap">
+      <button class="t-btn active" onclick="setTheme('light')">Light</button>
+      <button class="t-btn" onclick="setTheme('dark')">Dark</button>
+      <button class="t-btn" onclick="setTheme('crimson')">Crimson</button>
+    </div>
+    <div id="sidebar-foot">
+      <a href="https://discord.gg/XYfVEaAy2" target="_blank" style="color:var(--gold-light);text-decoration:underline">⚜ Join us on Discord</a><br>
+      <a href="https://www.roblox.com/communities/35456216/The-Kingdom-of-Dutch-Robloxia#!/about" target="_blank" style="color:var(--gold-light);text-decoration:underline">🎮 Join our Roblox Group</a><br>
+      Compiled by Leonard II, Minister of Finance &amp; Migration
+    </div>
+  </aside>
+
+  <main id="main">
+
+  <!-- HOME -->
+  <section class="page" data-page="home">
+    <div class="hero">
+      <img id="crest" src="data:removed" alt="Crest">
+      <h1>The Kingdom of Dutch Robloxia</h1>
+      <p class="sub">A Parliamentary Semi-Constitutional Monarchy on the coast between the Netherlands and Belgium. Leve Goudhof.</p>
+      <p style="font-size:.72rem;color:rgba(241,230,212,.45);margin-top:.2rem;letter-spacing:.06em;font-style:italic">Wiki programmed by Leonard II</p>
+      <div class="factstrip">
+        <div class="fact"><b class="xlink" onclick="goto('realm','loc-dunhag')">Dunhag</b><span>CAPITAL</span></div>
+        <div class="fact"><b class="xlink" onclick="goto('biography')">Nicholas Goudhof V</b><span>KING</span></div>
+        <div class="fact"><b class="xlink" onclick="goto('government')">Henry Barkworth</b><span>PRIME MINISTER</span></div>
+        <div class="fact"><b>Wilhelmus</b><span>ANTHEM</span></div>
+        <div class="fact"><b>Oct 2022</b><span>FOUNDED</span></div>
+      </div>
+      <div class="join-btn-row">
+        <a class="join-btn" href="https://discord.gg/XYfVEaAy2" target="_blank">⚜ Join the Kingdom on Discord</a>
+        <a class="join-btn" href="https://www.roblox.com/communities/35456216/The-Kingdom-of-Dutch-Robloxia#!/about" target="_blank">🎮 Join the Roblox Group</a>
+      </div>
+    </div>
+    <p class="reveal r1" style="max-width:760px;margin:0 auto 1.6rem;text-align:center;color:var(--muted)">A historical, Germanic-Dutch styled kingdom on the west coast of Europe, built up from reclaimed soggy ground into a strong, modern nation under the House of Goudhof. The country upholds freedom of speech, religion and the press, and funds healthcare and housing for its citizens through the state.</p>
+    <div class="grid g3 reveal r1">
+      <a class="tile" href="#crown"><span class="ic">♛</span><span>The Crown</span></a>
+      <a class="tile" href="#government"><span class="ic">⚖</span><span>Government</span></a>
+      <a class="tile" href="#realm"><span class="ic">🗺</span><span>The Realm</span></a>
+      <a class="tile" href="#military"><span class="ic">⚔</span><span>Military</span></a>
+      <a class="tile" href="#economy"><span class="ic">⛁</span><span>Economy</span></a>
+      <a class="tile" href="#diplomacy"><span class="ic">🤝</span><span>Diplomacy</span></a>
+    </div>
+  </section>
+
+  <!-- CROWN -->
+  <section class="page" data-page="crown">
+    <p class="eyebrow reveal">House of Goudhof</p>
+    <h1 class="title reveal r1">The Crown</h1>
+    <p class="lead reveal r2">The reigning house of Dutch Robloxia.</p>
+    <div class="divider reveal r2">⚜</div>
+    <div class="grid g2">
+      <div class="card portrait-card reveal r2">
+        <img src="data:removed" alt="King Nicholas Goudhof V">
+        <div>
+          <h3>King Nicholas Goudhof V</h3>
+          <p>Founder and sovereign since October 2022. Born 19 Aug 1984, Amsterdam. Also CEO of Goudhof Enterprises. Known as Your Majesty, The Crown, Lord Nicholas, or Nick.</p>
+        </div>
+      </div>
+      <div class="card portrait-card reveal r3">
+        <img src="data:removed" alt="Queen Eloise Goudhof II">
+        <div>
+          <h3>Queen Eloise Goudhof II</h3>
+          <p>Born 1995, Utrecht. Co-sovereign of the kingdom, married to King Nicholas Goudhof V. Known as the Fashion Idol. <span class="xlink" onclick="goto('realm','loc-dunhag')">Eloise Castle</span> and the <span class="xlink" onclick="goto('realm','loc-oysterdam')">Eloise Express</span> are named in her honour.</p>
+        </div>
+      </div>
+    </div>
+    <h2 class="section-title reveal r3" style="margin-top:1.8rem">Royal Family</h2>
+    <p class="reveal r4" style="max-width:680px">Other members of the House of Goudhof include their son Prince Friso Goudhof, plus Johannes Goudhof, Emma Bloem, and Lord Nicholas Goudhof IV, the previous head of the house.</p>
+  </section>
+
+  <!-- BIOGRAPHY -->
+  <section class="page" data-page="biography">
+    <p class="eyebrow reveal">House of Goudhof</p>
+    <h1 class="title reveal r1">King Nicholas Goudhof V</h1>
+    <p class="lead reveal r2">The man who built a nation from reclaimed sea and soil.</p>
+    <div class="divider reveal r2">⚜</div>
+    <div class="bio-layout reveal r2">
+      <div class="infobox">
+        <img src="data:removed" alt="King Nicholas Goudhof V">
+        <table>
+          <tr><td class="lbl">Name</td><td>Nicholas Goudhof V</td></tr>
+          <tr><td class="lbl">Age</td><td>39</td></tr>
+          <tr><td class="lbl">Birthplace</td><td>Amsterdam, The Netherlands</td></tr>
+          <tr><td class="lbl">Title</td><td>King of the Kingdom of Dutch Robloxia</td></tr>
+          <tr><td class="lbl">Residency</td><td>Coastburgh Castle, Hendrikdam</td></tr>
+          <tr><td class="lbl">Marriage</td><td>"Queen" Eloise Goudhof II</td></tr>
+        </table>
+      </div>
+      <div class="bio-text">
+        <p>Nicholas was born in Amsterdam and raised by his mother, whose identity has never been confirmed, though it is widely believed she had ties to the Dutch Royal Family. His father was a hardworking businessman who saw most of his opportunity in companies across America, building on wealth that had passed down through several generations of the family and pushing his company further than its rivals.</p>
+        <p>It was Nicholas's grandfather who first dreamed of building an entire country from nothing, purely as a business venture. He secured international permission to do it, but his health gave out before construction could ever begin. That task fell to Nicholas's father, who began importing soil and draining seawater along the coast between Belgium and the Netherlands. He succeeded in raising the land itself, but died of lung cancer at a young age, before a single building rose from it.</p>
+        <p>Nicholas inherited the family fortune, the land included, and gave it a name: the Kingdom of Dutch Robloxia. He proclaimed himself king. What had started as his grandfather's profit scheme became something else under Nicholas. Rather than building the country for himself, he built it for the people in it, securing civil rights, ensuring decent housing, and forging alliances abroad to strengthen the young kingdom's place in the world.</p>
+      </div>
+    </div>
+    <div class="bio-gallery reveal r3">
+      <img src="data:removed" alt="King Nicholas at a royal dinner">
+      <img src="data:removed" alt="King Nicholas in the throne room">
+      <img src="data:removed" alt="King Nicholas in royal uniform">
+    </div>
+    <footer class="pagefoot">© Kingdom of Dutch Robloxia · Est. October 2022 · Compiled by Leonard II, Minister of Finance &amp; Migration</footer>
+  </section>
+
+  <!-- GOVERNMENT -->
+  <section class="page" data-page="government">
+    <p class="eyebrow reveal">His Majesty's Government</p>
+    <h1 class="title reveal r1">Government</h1>
+    <p class="lead reveal r2">A Parliamentary Semi-Constitutional Monarchy. The King is Head of State; the Prime Minister leads the Cabinet and is elected, with new elections able to be called by the people as often as monthly.</p>
+    <div class="divider reveal r2">⚜</div>
+    <div class="grid g3">
+      <div class="card reveal r2"><span class="tag">Head of Government</span><h3>Henry Barkworth</h3><p>Prime Minister since March 2025. Forms the Cabinet and oversees its ministers.</p></div>
+      <div class="card reveal r2"><span class="tag">Finance &amp; Migration</span><h3>Leonard II</h3><p>Treasury, Robux fundraising, and now citizenship &amp; outreach to other communities. Also programmed and compiled this wiki.</p></div>
+      <div class="card reveal r3"><span class="tag">Foreign Affairs</span><h3>DaveRammstein44</h3><p>Diplomatic relations and the Roleplay UN seat.</p></div>
+      <div class="card reveal r3"><span class="tag">Education, Culture &amp; Science</span><h3>Eliasno</h3><p>Heritage and community events.</p></div>
+      <div class="card reveal r4"><span class="tag">Housing</span><h3>Cas</h3><p>Regional development and property, since March 2026.</p></div>
+      <div class="card reveal r4 vacant"><span class="tag">Defence</span><h3>Vacant</h3><p>Oversees the military branches.</p></div>
+      <div class="card reveal r5 vacant"><span class="tag">Healthcare</span><h3>Vacant</h3><p>Open for applications.</p></div>
+      <div class="card reveal r5 vacant"><span class="tag">Social Affairs</span><h3>Vacant</h3><p>Citizen welfare.</p></div>
+    </div>
+    <h2 class="section-title reveal r5" style="margin-top:1.8rem">How it works</h2>
+    <p class="reveal r5" style="max-width:680px">Regions are governed locally by Governors, equivalent to mayors, who control regional tax and police and report regularly to the state government. So far, <span class="xlink" onclick="goto('realm','loc-heuvelmeer')">Heuvelmeer</span>, <span class="xlink" onclick="goto('realm','loc-hendrikdam')">Hendrikdam</span> and <span class="xlink" onclick="goto('realm','loc-vaderveen')">Vaderveen</span> have governors.</p>
+  </section>
+
+  <!-- REALM (with map) -->
+  <section class="page" data-page="realm">
+    <p class="eyebrow reveal">Geography</p>
+    <h1 class="title reveal r1">The Realm</h1>
+    <p class="lead reveal r2">Dutch Robloxia lies on the coast between Belgium and the Netherlands, split into seven home regions.</p>
+    <div class="divider reveal r2">⚜</div>
+    <div id="mapwrap" class="reveal r2">
+      <div id="mapinner">
+        <img id="mapzoom" src="data:removed" alt="Map of Dutch Robloxia" draggable="false">
+        <span class="region-label capital" style="left:59.58%;top:50.28%">Dunhag</span>
+        <span class="region-label" style="left:40.10%;top:54.81%">Oysterdam</span>
+        <span class="region-label" style="left:38.28%;top:38.61%">Hendrikdam</span>
+        <span class="region-label" style="left:54.64%;top:52.41%">Heuvelmeer</span>
+        <span class="region-label" style="left:32.92%;top:43.61%">Vaderveen</span>
+        <span class="region-label" style="left:33.18%;top:45.19%">Angel Island</span>
+        <span class="region-label" style="left:65.31%;top:40.00%">Duurn</span>
+        <span class="region-label" style="left:47.08%;top:33.33%">Bladland</span>
+      </div>
+      <span id="zoomhint">Scroll to zoom &middot; Drag to pan</span>
+      <button id="mapreset" type="button" title="Reset view">&#8634;</button>
+    </div>
+    <div class="grid g2" style="margin-top:1.4rem">
+      <div class="card reveal r3" id="loc-dunhag"><span class="tag">Capital</span><h3>Dunhag</h3><p>Official capital. Home to Eloise Castle, the Peace Castle, and the Royal Parade Grounds.</p></div>
+      <div class="card reveal r3" id="loc-oysterdam"><span class="tag">Political Capital</span><h3>Oysterdam</h3><p>Seat of government activity. Silverrail Station is here, departure point of the Eloise Express.</p></div>
+      <div class="card reveal r4" id="loc-hendrikdam"><span class="tag">Region</span><h3>Hendrikdam</h3><p>Island region inspired by the Wadden Islands.</p></div>
+      <div class="card reveal r4" id="loc-heuvelmeer"><span class="tag">Region</span><h3>Heuvelmeer</h3><p>Hills, housing projects, industry, and agriculture.</p></div>
+      <div class="card reveal r4" id="loc-vaderveen"><span class="tag">Region</span><h3>Vaderveen &amp; Angel Island</h3><p>Island pair, home to the Huis Theerots teahouse.</p></div>
+      <div class="card reveal r5"><span class="tag">Region</span><h3>Duurn</h3><p>Forested region. Home to Huis Duurn, residence of the German Kaiser.</p></div>
+      <div class="card reveal r5"><span class="tag">Region</span><h3>Bladland</h3><p>Small region; Firewood Forest is used as a military testing ground.</p></div>
+    </div>
+    <h2 class="section-title reveal r5" style="margin-top:1.8rem">Overseas &amp; Foreign Holdings</h2>
+    <div class="grid g3">
+      <div class="card reveal r5"><h3>The Consulate</h3><p>Embassy in London.</p></div>
+      <div class="card reveal r5"><h3>Palace of Versailles</h3><p>Property in France.</p></div>
+      <div class="card reveal r5"><h3>Goudhof Palace</h3><p>Royal estate in Siberia.</p></div>
+    </div>
+    <h2 class="section-title reveal r5" style="margin-top:1.8rem">Notable Vehicles</h2>
+    <p class="reveal r5" style="max-width:680px">State and civilian fleets include the 1915 Ford Model T Roadster Pickup, the 1940 Chevrolet Special De Luxe Town Sedan, the MG MGA Roadster, the 1938 Plymouth P5 Sedan, and the VAZ-2101, alongside the Eloise Express.</p>
+  </section>
+
+  <!-- MILITARY -->
+  <section class="page" data-page="military">
+    <p class="eyebrow reveal">Ministry of Defence</p>
+    <h1 class="title reveal r1">Royal Military</h1>
+    <p class="lead reveal r2">Split into four branches, overseen by the Ministry of Defence &amp; Justice.</p>
+    <div class="divider reveal r2">⚜</div>
+    <div class="grid g2">
+      <div class="card reveal r2"><h3>Royal Army</h3><p>Defends Dutch Robloxian soil and trains at the <span class="xlink" onclick="goto('realm','loc-dunhag')">Royal Parade Grounds</span>.</p></div>
+      <div class="card reveal r2"><h3>Royal Navy</h3><p>Protects the Royal Fleet, ports, and trade routes.</p></div>
+      <div class="card reveal r3"><h3>Royal Airforce</h3><p>Air defence; includes the 11th Airmobile Brigade (paratroopers).</p></div>
+      <div class="card reveal r3"><h3>Royal Military Police</h3><p>Koninklijke Marechaussee. Includes the <span class="xlink" onclick="goto('military','poster-anchor')">Royal Guard</span>, the elite personal escort of the royal family.</p></div>
+    </div>
+    <h2 class="section-title reveal r4" style="margin-top:1.8rem">Recruitment</h2>
+    <p class="reveal r4">Apply in #military-recruitment with your Roblox username, Discord username, reason for joining, and chosen branch.</p>
+    <h2 class="section-title reveal r5" style="margin-top:1.8rem">Ranks</h2>
+    <table class="tbl reveal r5">
+      <tr><th>Tier</th><th>Army</th><th>Navy</th><th>Airforce</th><th>Military Police</th></tr>
+      <tr><td>Entry</td><td>Private</td><td>Sailor 2nd / 1st Class</td><td>Private 3rd–1st Class</td><td>Private &amp; Private 1st Class</td></tr>
+      <tr><td>NCO</td><td>Sergeant</td><td>Sergeant / Boatsman</td><td>Sergeant &amp; Sergeant 1st Class</td><td>Sergeant &amp; Sergeant 1st Class</td></tr>
+      <tr><td>Junior Officer</td><td>Second Lieutenant</td><td>Third Lieutenant</td><td>Second Lieutenant</td><td>2nd Lieutenant (OF-1A)</td></tr>
+      <tr><td>Captain</td><td>Captain</td><td>Second Lieutenant (Oldest Category)</td><td>Captain</td><td>Captain (OF-2)</td></tr>
+      <tr><td>Senior Officer</td><td>Colonel</td><td>Captain</td><td>Colonel</td><td>Colonel</td></tr>
+      <tr><td>Top Command</td><td>General</td><td>Admiral</td><td>General</td><td>Commanding General</td></tr>
+    </table>
+    <div class="poster-gallery reveal r5">
+      <div id="poster-anchor" class="poster-frame">
+        <img src="data:removed" alt="For King. For Honor. Serve with the Royal Guard.">
+        <div class="poster-caption">FOR KING. FOR HONOR. SERVE WITH THE ROYAL GUARD</div>
+      </div>
+      <div class="poster-frame">
+        <img src="data:removed" alt="King Nicholas of the Kingdom of Dutch Robloxia. Unity, Duty, Progress.">
+        <div class="poster-caption">UNITY. DUTY. PROGRESS. ONE KING, ONE KINGDOM, ONE FUTURE</div>
+      </div>
+      <div class="poster-frame">
+        <img src="data:removed" alt="Our leader is strong. Our nation is strong.">
+        <div class="poster-caption">OUR LEADER IS STRONG. OUR NATION IS STRONG</div>
+      </div>
+      <div class="poster-frame">
+        <img src="data:removed" alt="Follow our strong leader, for a greater future.">
+        <div class="poster-caption">FOLLOW OUR STRONG LEADER. FOR A GREATER FUTURE</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ECONOMY -->
+  <section class="page" data-page="economy">
+    <p class="eyebrow reveal">Ministry of Finance</p>
+    <h1 class="title reveal r1">Economy</h1>
+    <p class="lead reveal r2">Wealth built on trade, overseas profits, and home industry.</p>
+    <div class="divider reveal r2">⚜</div>
+    <div class="grid g2">
+      <div class="card reveal r2"><h3>Royal Bank</h3><p>The kingdom's in-house treasury system, where citizens earn and trade.</p></div>
+      <div class="card reveal r2"><h3>Foreign Trade</h3><p>Oil profits from Russia and tiny colonies in the Caribbean.</p></div>
+      <div class="card reveal r3"><h3>Home Industry</h3><p>Agriculture, factories and mining create jobs for working citizens.</p></div>
+      <div class="card reveal r3"><h3>Tourism</h3><p>Income from national heritage sites and attractions.</p></div>
+    </div>
+    <h2 class="section-title reveal r4" style="margin-top:1.8rem">Allied Companies</h2>
+    <div class="grid g3">
+      <div class="card reveal r4"><h3>Imperial Lines</h3><p>Shipping company.</p></div>
+      <div class="card reveal r4"><h3>Silver Wings Air</h3><p>Aviation company.</p></div>
+    </div>
+  </section>
+
+  <!-- DIPLOMACY -->
+  <section class="page" data-page="diplomacy">
+    <p class="eyebrow reveal">Foreign Affairs</p>
+    <h1 class="title reveal r1">Diplomacy</h1>
+    <p class="lead reveal r2">Open to alliances on political, economic, and military terms.</p>
+    <div class="divider reveal r2">⚜</div>
+    <table class="tbl reveal r2">
+      <tr><th>Nation</th><th>Status</th></tr>
+      <tr><td>Austrian Empire</td><td>Allied</td></tr>
+      <tr><td>Vatican City State</td><td>Allied</td></tr>
+      <tr><td>Kingdom of Belgium</td><td>Allied</td></tr>
+      <tr><td>Republic of Poland</td><td>Allied</td></tr>
+      <tr><td>German Empire</td><td>Allied</td></tr>
+      <tr><td>The Arteidian Empire</td><td>Allied</td></tr>
+      <tr><td>North Korea</td><td>Allied</td></tr>
+      <tr><td>Roleplay United Nations</td><td>Member seat</td></tr>
+    </table>
+  </section>
+
+  <!-- CITIZENS -->
+  <section class="page" data-page="citizens">
+    <p class="eyebrow reveal">People of the Realm</p>
+    <h1 class="title reveal r1">Notable Citizens</h1>
+    <p class="lead reveal r2">A few faces beyond the Crown and Cabinet.</p>
+    <div class="divider reveal r2">⚜</div>
+    <div class="grid g3">
+      <div class="card reveal r2"><h3>Pope Paulus P.P. VII</h3><p>Vatican's ally representative in the kingdom.</p></div>
+      <div class="card reveal r2"><h3>Jonkvrouw Catharina van Claerberghen</h3><p>Untitled noblewoman, frequent at court events.</p></div>
+      <div class="card reveal r3"><h3>Bjorn</h3><p>Military veteran of the Knil who fought for the Dutch in Asia.</p></div>
+    </div>
+    <p class="reveal r4" style="margin-top:1rem;max-width:680px">Also among the realm's citizens: Krol van Male and Edward Sterling.</p>
+  </section>
+
+  <!-- LAWS -->
+  <section class="page" data-page="laws">
+    <p class="eyebrow reveal">Royal Decree</p>
+    <h1 class="title reveal r1">Laws of the Realm</h1>
+    <p class="lead reveal r2">Eight rules govern every citizen, decreed by His Majesty.</p>
+    <div class="divider reveal r2">⚜</div>
+    <div class="lawgrid">
+      <div class="law reveal r2"><b>I.</b><span>Display name must be your roleplay name or Roblox username.</span></div>
+      <div class="law reveal r2"><b>II.</b><span>NSFW content is completely forbidden.</span></div>
+      <div class="law reveal r3"><b>III.</b><span>Be respectful to all members. No arguments or disrespect.</span></div>
+      <div class="law reveal r3"><b>IV.</b><span>No spamming, in text or voice channels.</span></div>
+      <div class="law reveal r4"><b>V.</b><span>Swearing is permitted only in moderation.</span></div>
+      <div class="law reveal r4"><b>VI.</b><span>No slurs or derogatory terms. Results in a ban.</span></div>
+      <div class="law reveal r5"><b>VII.</b><span>No offensive avatars or usernames.</span></div>
+      <div class="law reveal r5"><b>VIII.</b><span>No invites to unrelated Discord servers.</span></div>
+    </div>
+    <p style="font-size:.8rem;color:var(--muted);font-style:italic;text-align:center;margin-top:1.2rem">@here and @everyone are reserved for upper-rank citizens, by royal decree of June 2026.</p>
+    <footer class="pagefoot">© Kingdom of Dutch Robloxia · Est. October 2022 · Compiled by Leonard II, Minister of Finance &amp; Migration</footer>
+  </section>
+
+  <!-- MUSIC -->
+  <section class="page" data-page="music">
+    <p class="eyebrow reveal">House of Goudhof Presents</p>
+    <h1 class="title reveal r1">The Royal Songbook</h1>
+    <p class="lead reveal r2">The official national hymn, sung in seven tongues, alongside the kingdom's marching songs and royal ballads.</p>
+    <div class="divider reveal r2">⚜</div>
+
+    <div class="music-group reveal r2">
+      <h2 class="section-title">The National Hymn</h2>
+      <p class="lead" style="margin-bottom:1rem">One hymn, seven voices. Composed for the kingdom and its allies abroad.</p>
+      <div class="grid g3">
+        <div class="card song-card"><span class="lang">🇳🇱 Dutch</span><h3>Van Steen en Eik</h3><audio controls preload="metadata" data-src="data:removed"></audio></div>
+        <div class="card song-card"><span class="lang">🇬🇧 English</span><h3>By Stone and Oak</h3><audio controls preload="metadata" data-src="data:removed"></audio></div>
+        <div class="card song-card"><span class="lang">🇩🇪 German</span><h3>Stein und Eiche</h3><audio controls preload="metadata" data-src="data:removed"></audio></div>
+        <div class="card song-card"><span class="lang">🇮🇹 Italian</span><h3>Di Pietra e Quercia</h3><audio controls preload="metadata" data-src="data:removed"></audio></div>
+        <div class="card song-card"><span class="lang">🇫🇷 French</span><h3>Souverain Éternel</h3><audio controls preload="metadata" data-src="data:removed"></audio></div>
+        <div class="card song-card"><span class="lang">🇪🇸 Spanish</span><h3>Derecho Soberano</h3><audio controls preload="metadata" data-src="data:removed"></audio></div>
+        <div class="card song-card"><span class="lang">🇵🇹 Portuguese</span><h3>Pedra e Carvalho</h3><audio controls preload="metadata" data-src="data:removed"></audio></div>
+      </div>
+    </div>
+
+    <div class="music-group reveal r3">
+      <h2 class="section-title">Royal Navy Song</h2>
+      <div class="grid g3">
+        <div class="card song-card"><span class="lang">⚓ Navy</span><h3>Goudhof's Flag on Every Mast</h3><audio controls preload="metadata" data-src="data:removed"></audio></div>
+      </div>
+    </div>
+
+    <div class="music-group reveal r3">
+      <h2 class="section-title">Marching Songs</h2>
+      <div class="grid g3">
+        <div class="card song-card"><span class="lang">⚔ March</span><h3>Crown of Dunhag</h3><audio controls preload="metadata" data-src="data:removed"></audio></div>
+        <div class="card song-card"><span class="lang">⚔ March</span><h3>Standard of the Goudhof</h3><audio controls preload="metadata" data-src="data:removed"></audio></div>
+      </div>
+    </div>
+
+    <div class="music-group reveal r4">
+      <h2 class="section-title">National Songs</h2>
+      <div class="grid g3">
+        <div class="card song-card"><span class="lang">🎵 National</span><h3>Kroon op de Kustlijn</h3><audio controls preload="metadata" data-src="data:removed"></audio></div>
+        <div class="card song-card"><span class="lang">🎵 National</span><h3>De Zee Getemd</h3><audio controls preload="metadata" data-src="data:removed"></audio></div>
+        <div class="card song-card"><span class="lang">🇩🇪 ⭐ German</span><h3>Dutch Robloxia Wird Siegen</h3><audio controls preload="metadata" data-src="data:removed"></audio></div>
+      </div>
+    </div>
+
+    <div class="music-group reveal r5">
+      <h2 class="section-title">Royal Ballads</h2>
+      <div class="grid g3">
+        <div class="card song-card"><span class="lang">👑 Ballad</span><h3>Vigil for the Goudhof Throne</h3><audio controls preload="metadata" data-src="data:removed"></audio></div>
+        <div class="card song-card"><span class="lang">👑 Ballad</span><h3>The Sovereign's Herald</h3><audio controls preload="metadata" data-src="data:removed"></audio></div>
+        <div class="card song-card"><span class="lang">👑 Ballad</span><h3>Crown and Country</h3><audio controls preload="metadata" data-src="data:removed"></audio></div>
+      </div>
+    </div>
+
+    <p style="text-align:center;font-size:.8rem;color:var(--muted);font-style:italic;margin-top:.5rem">All songs of the kingdom composed by His Majesty King Nicholas Goudhof V.</p>
+    <footer class="pagefoot">© Kingdom of Dutch Robloxia · Est. October 2022 · Compiled by Leonard II, Minister of Finance &amp; Migration</footer>
+  </section>
+
+  <!-- GAMES -->
+  <section class="page" data-page="games">
+    <p class="eyebrow reveal">Play With Us</p>
+    <h1 class="title reveal r1">Roblox Games</h1>
+    <p class="lead reveal r2">The official Roblox experiences of the Kingdom of Dutch Robloxia, from royal palaces to the regions you can govern.</p>
+    <div class="divider reveal r2">⚜</div>
+    <a class="join-btn reveal r2" style="display:block;max-width:340px;margin:0 auto 1.6rem" href="https://www.roblox.com/communities/35456216/The-Kingdom-of-Dutch-Robloxia#!/about" target="_blank">🎮 Join Our Roblox Group</a>
+    <div class="grid g3">
+      <a class="card reveal r2" href="https://www.roblox.com/games/85523012126694/The-Consulate" target="_blank"><h3>The Consulate</h3><p>The kingdom's diplomatic seat for foreign affairs and embassy business.</p></a>
+      <a class="card reveal r2" href="https://www.roblox.com/games/112289361251249/Luxury-Train-Eloise-Express-Est-1918" target="_blank"><h3>Luxury Train: Eloise Express (Est. 1918)</h3><p>A grand royal railway journey departing from Silverrail Station in Oysterdam.</p></a>
+      <a class="card reveal r2" href="https://www.roblox.com/games/92864647522209/Huis-Duurn" target="_blank"><h3>Huis Duurn</h3><p>A historic Dutch-styled estate house open to citizens and visitors.</p></a>
+      <a class="card reveal r3" href="https://www.roblox.com/games/93682849882925/The-Palace-of-Versailles-France" target="_blank"><h3>The Palace of Versailles, France</h3><p>A recreation of the legendary French royal palace and gardens.</p></a>
+      <a class="card reveal r3" href="https://www.roblox.com/games/91765774833408/Hendrikdam-Dutch-Robloxian-Region" target="_blank"><h3>Hendrikdam</h3><p>A Dutch Robloxian region governed by a royally appointed Governor.</p></a>
+      <a class="card reveal r3" href="https://www.roblox.com/games/106630634292106/Parade-grounds" target="_blank"><h3>Parade Grounds</h3><p>The Royal Parade Grounds in Dunhag, home to state ceremonies and military marches.</p></a>
+      <a class="card reveal r4" href="https://www.roblox.com/games/87472900875628/Goudhof-Palace-Siberia" target="_blank"><h3>Goudhof Palace, Siberia</h3><p>A remote palace estate of the House of Goudhof.</p></a>
+      <a class="card reveal r4" href="https://www.roblox.com/games/71201496315449/The-Peace-Castle" target="_blank"><h3>The Peace Castle</h3><p>A castle in Dunhag dedicated to diplomacy and the kingdom's peace treaties.</p></a>
+      <a class="card reveal r4" href="https://www.roblox.com/games/121906627212582/Heuvelmeer-Dutch-Robloxian-Region" target="_blank"><h3>Heuvelmeer</h3><p>A Dutch Robloxian region governed by a royally appointed Governor.</p></a>
+      <a class="card reveal r5" href="https://www.roblox.com/games/118260168417851/Royalty-Castle-Rose-Eloise" target="_blank"><h3>Royalty Castle, Rose Eloise</h3><p>A royal residence named for the House of Goudhof's Rose Eloise estate.</p></a>
+      <a class="card reveal r5" href="https://www.roblox.com/games/109749655725642/Vaderveen-Dutch-Robloxian-Island" target="_blank"><h3>Vaderveen</h3><p>A Dutch Robloxian island region governed by a royally appointed Governor.</p></a>
+    </div>
+    <footer class="pagefoot">© Kingdom of Dutch Robloxia · Est. October 2022 · Compiled by Leonard II, Minister of Finance &amp; Migration</footer>
+  </section>
+
+  </main>
+</div>
+
+<script>
+const pages = document.querySelectorAll('.page');
+const links = document.querySelectorAll('#navlist a');
+function route(){
+  const id = (location.hash || '#home').slice(1);
+  pages.forEach(p=>p.classList.toggle('page-active', p.dataset.page===id));
+  links.forEach(a=>a.classList.toggle('active', a.dataset.p===id));
+  document.getElementById('sidebar').classList.remove('open');
+  window.scrollTo(0,0);
+}
+window.addEventListener('hashchange', route);
+route();
+
+// GOTO helper for cross-links
+function goto(page, anchor){
+  location.hash = page;
+  if(anchor){
+    setTimeout(function(){
+      var el = document.getElementById(anchor);
+      if(el){ el.scrollIntoView({behavior:'smooth', block:'center'}); el.classList.add('xlink-flash'); setTimeout(function(){ el.classList.remove('xlink-flash'); }, 700); }
+    }, 300);
+  }
+}
+
+// THEME
+function setTheme(t){
+  document.documentElement.setAttribute('data-theme', t);
+  document.querySelectorAll('.t-btn').forEach(function(b){ b.classList.toggle('active', b.textContent.toLowerCase()===t); });
+}
+
+// PRELOADER
+window.addEventListener('load', function(){
+  var pl = document.getElementById('preloader');
+  if(pl){ setTimeout(function(){ pl.classList.add('hidden'); setTimeout(function(){ pl.style.display='none'; }, 700); }, 800); }
+});
+
+// SEARCH
+var searchIndex = [];
+function buildSearchIndex(){
+  searchIndex = [];
+  pages.forEach(function(page){
+    var pId = page.dataset.page;
+    var titleEl = page.querySelector('h1.title');
+    var pageName = titleEl ? titleEl.textContent.trim() : pId;
+    page.querySelectorAll('.card, .law, .gloss-item').forEach(function(el){
+      var t = el.querySelector('h3, .gloss-term');
+      var title = t ? t.textContent.trim() : '';
+      var text = el.textContent.replace(/\s+/g,' ').trim();
+      if(text.length > 2) searchIndex.push({page:pId, pageName:pageName, title:title, text:text, id:el.id||null});
+    });
+  });
+}
+buildSearchIndex();
+
+/* convert embedded base64 audio into Blob URLs (more reliable than huge data: URIs in src) */
+document.querySelectorAll('audio[data-src]').forEach(function(a){
+  var raw = a.getAttribute('data-src');
+  fetch(raw)
+    .then(function(res){ return res.blob(); })
+    .then(function(blob){
+      a.src = URL.createObjectURL(blob);
+      a.removeAttribute('data-src');
+      a.load();
+    })
+    .catch(function(e){ console.error('Failed to load track:', e); });
+});
+var searchMatches = [];
+function doSearch(q){
+  var box = document.getElementById('search-results');
+  q = q.trim().toLowerCase();
+  if(!q){ box.classList.remove('show'); box.innerHTML=''; return; }
+  searchMatches = searchIndex.filter(function(it){ return it.text.toLowerCase().indexOf(q) !== -1; }).slice(0,8);
+  if(!searchMatches.length){
+    box.innerHTML = '<div class="sr-empty">Nothing found.</div>';
+  } else {
+    box.innerHTML = searchMatches.map(function(m,i){
+      var snip = m.text.length > 80 ? m.text.slice(0,80)+'...' : m.text;
+      return '<a href="#" onclick="goSearch('+i+');return false;"><span class="sr-page">'+m.pageName+'</span><span class="sr-title">'+m.title+'</span>'+snip+'</a>';
+    }).join('');
+  }
+  box.classList.add('show');
+}
+function goSearch(i){
+  var m = searchMatches[i];
+  if(!m) return;
+  document.getElementById('search-input').value = '';
+  document.getElementById('search-results').classList.remove('show');
+  goto(m.page, m.id);
+}
+document.getElementById('search-input').addEventListener('input', function(){ doSearch(this.value); });
+document.addEventListener('click', function(e){
+  if(!e.target.closest('#search-wrap')) document.getElementById('search-results').classList.remove('show');
+});
+document.addEventListener('keydown', function(e){
+  if(e.key === '/' && document.activeElement.tagName !== 'INPUT'){
+    e.preventDefault();
+    document.getElementById('search-input').focus();
+  }
+  if(e.key === 'Escape'){
+    document.getElementById('search-input').blur();
+    document.getElementById('search-results').classList.remove('show');
+  }
+});
+
+
+
+(function(){
+  var wrap=document.getElementById('mapwrap'), inner=document.getElementById('mapinner');
+  if(!wrap||!inner)return;
+  var scale=1,tx=0,ty=0,dragging=false,sx,sy,stx,sty;
+  function apply(){inner.style.transform='translate('+tx+'px,'+ty+'px) scale('+scale+')'}
+  wrap.addEventListener('wheel',function(e){
+    e.preventDefault();
+    var r=wrap.getBoundingClientRect();
+    var mx=e.clientX-r.left, my=e.clientY-r.top;
+    var d=e.deltaY>0?0.85:1.18;
+    var ns=Math.min(Math.max(scale*d,1),6);
+    var ratio=ns/scale;
+    tx=mx-(mx-tx)*ratio;
+    ty=my-(my-ty)*ratio;
+    scale=ns;
+    apply();
+  },{passive:false});
+  wrap.addEventListener('mousedown',function(e){dragging=true;sx=e.clientX;sy=e.clientY;stx=tx;sty=ty;e.preventDefault()});
+  window.addEventListener('mousemove',function(e){if(!dragging)return;tx=stx+(e.clientX-sx);ty=sty+(e.clientY-sy);apply()});
+  window.addEventListener('mouseup',function(){dragging=false});
+  var lastDist=0;
+  wrap.addEventListener('touchstart',function(e){
+    if(e.touches.length===2){
+      lastDist=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
+    }else if(e.touches.length===1){dragging=true;sx=e.touches[0].clientX;sy=e.touches[0].clientY;stx=tx;sty=ty}
+  },{passive:true});
+  wrap.addEventListener('touchmove',function(e){
+    if(e.touches.length===2){
+      e.preventDefault();
+      var nd=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
+      var r=wrap.getBoundingClientRect();
+      var mx=(e.touches[0].clientX+e.touches[1].clientX)/2-r.left;
+      var my=(e.touches[0].clientY+e.touches[1].clientY)/2-r.top;
+      var d=nd/lastDist; lastDist=nd;
+      var ns=Math.min(Math.max(scale*d,1),6);
+      var ratio=ns/scale;
+      tx=mx-(mx-tx)*ratio;
+      ty=my-(my-ty)*ratio;
+      scale=ns;
+      apply();
+    }else if(e.touches.length===1&&dragging){
+      tx=stx+(e.touches[0].clientX-sx);ty=sty+(e.touches[0].clientY-sy);apply();
+    }
+  },{passive:false});
+  wrap.addEventListener('touchend',function(){dragging=false});
+  var resetBtn=document.getElementById('mapreset');
+  if(resetBtn){resetBtn.addEventListener('click',function(){scale=1;tx=0;ty=0;apply();});}
+})();
+</script>
+</body>
+</html>
