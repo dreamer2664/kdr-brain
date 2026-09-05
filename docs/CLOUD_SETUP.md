@@ -1,5 +1,11 @@
 # Free permanent storage for kdr-brain — setup tutorial
 
+> **Status: ✅ done on 2026-09-05.** Repo <https://github.com/dreamer2664/kdr-brain> (public) ·
+> artifacts <https://github.com/dreamer2664/kdr-brain/releases/latest> · CI <https://github.com/dreamer2664/kdr-brain/actions>.
+> First CI build passed all gates (59,995,660 B total, 75/75 exact answers) and produced a byte-identical `brain.kdr`.
+> The token lives only in the git-ignored file `.kdr-secrets/github.env`; the scripts load it automatically, so
+> from now on a rebuild + publish is just `sh scripts/push_to_github.sh`. Token expires 2027 → redo Step 3 only.
+
 ## Which service fits best: **GitHub** (free plan)
 
 | Need | GitHub Free | Why the alternatives lose |

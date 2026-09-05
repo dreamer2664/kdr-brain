@@ -3,6 +3,8 @@
 # without waiting for GitHub Actions. Same token as push_to_github.sh (Contents: read/write).
 #   GH_OWNER=yourname GH_TOKEN=github_pat_xxx sh scripts/upload_release.sh
 set -eu
+# token file written once during setup (git-ignored); env vars given on the command line win
+[ -f "$(dirname "$0")/../.kdr-secrets/github.env" ] && { set -a; . "$(dirname "$0")/../.kdr-secrets/github.env"; set +a; }
 : "${GH_OWNER:?set GH_OWNER}"; : "${GH_TOKEN:?set GH_TOKEN}"
 GH_REPO="${GH_REPO:-kdr-brain}"; TAG="${TAG:-latest}"
 API="https://api.github.com/repos/$GH_OWNER/$GH_REPO"
