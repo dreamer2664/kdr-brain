@@ -8,6 +8,7 @@ set -eu
 : "${GH_OWNER:?set GH_OWNER=<your GitHub username>}"
 : "${GH_TOKEN:?set GH_TOKEN=<fine-grained token with Contents + Workflows read/write>}"
 GH_REPO="${GH_REPO:-kdr-brain}"
+export GH_OWNER GH_TOKEN GH_REPO   # the git credential helper below reads them from the environment
 cd "$(dirname "$0")/.."
 
 # 1) sanity-check the token against the repo before touching git
@@ -30,10 +31,13 @@ git add -A
 git diff --cached --quiet || git commit -q -m "${COMMIT_MSG:-update $(date -u +%Y-%m-%dT%H:%MZ)}"
 git branch -M main
 
-# 3) push (token passed inline, remote is not stored)
-git push -u "https://x-access-token:${GH_TOKEN}@github.com/${GH_OWNER}/${GH_REPO}.git" main
+# 3) push. The token is handed to git through a one-shot credential helper, so it never
+#    appears in .git/config, in the remote URL, or in error messages.
 git remote remove origin 2>/dev/null || true
-git remote add origin "https://github.com/${GH_OWNER}/${GH_REPO}.git"   # token-free URL for reading
+git remote add origin "https://github.com/${GH_OWNER}/${GH_REPO}.git"
+git -c credential.helper= \
+    -c credential.helper='!f() { echo "username=${GH_OWNER}"; echo "password=${GH_TOKEN}"; }; f' \
+    push -u origin main
 
 echo
 echo "pushed. repo:     https://github.com/${GH_OWNER}/${GH_REPO}"

@@ -55,12 +55,16 @@ curl 'http://localhost:8080/api/ask?q=What+is+the+capital'
 ## Rebuild from scratch
 
 ```bash
-python3 scripts/extract.py       # raw crawl (data/raw) -> data/passages.json
-python3 scripts/pack.py          # quantize models + embed passages -> release/brain.kdr  (needs the two HF checkpoints in /tmp/build)
-python3 scripts/gen_unicode.py   # unicode tables for the tokenizer
-make                           # -> release/kdr-brain
-python3 scripts/eval_c.py -v     # run the test set against the C engine
+python3 scripts/crawl.py         # the 3 wikis -> data/raw/   (only network step; data/passages.json is the checked-in extraction of it)
+python3 scripts/pack.py          # quantize models + embed passages -> release/brain.kdr  (needs the two HF checkpoints in /tmp/build, see .github/workflows/build.yml)
+python3 scripts/gen_unicode.py   # unicode tables for the tokenizer -> src/unicode_tables.h
+make                             # -> release/kdr-brain
+python3 scripts/eval_c.py -v     # run the 75-question test set against the C engine (--strict = CI gate)
 ```
+
+Only `src/`, `data/`, `scripts/` are versioned (1.5 MB). The two build outputs (`release/brain.kdr` 58 MB,
+`release/kdr-brain` 1.5 MB) are rebuilt by GitHub Actions on every push and published as a GitHub Release;
+`KDR_REPO=owner/kdr-brain sh scripts/restore.sh` downloads them back. Setup: `docs/CLOUD_SETUP.md`.
 
 ## Honest limitations
 
