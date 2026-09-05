@@ -11,7 +11,7 @@
 | Need | GitHub Free | Why the alternatives lose |
 |---|---|---|
 | Keep the 1.5 MB source (C engine, scripts, crawled wiki data) safe, with history | unlimited public **and** private repos | Google Drive / Dropbox have no `git`, no history, and their APIs need OAuth browser dances |
-| Store the built `brain.kdr` (58 MB) + binary (1.5 MB) | **Release assets: up to 2 GB per file**, unlimited count, direct download links, no token needed to fetch from a public repo | Git itself blocks files > 100 MB and Git LFS is capped at 1 GB/month bandwidth — releases avoid both limits |
+| Store the built `brain.kdr` (58 MB) + binary (8 MB) + composer model (398 MB) | **Release assets: up to 2 GB per file**, unlimited count, direct download links, no token needed to fetch from a public repo | Git itself blocks files > 100 MB and Git LFS is capped at 1 GB/month bandwidth — releases avoid both limits |
 | Let the assistant rebuild everything by itself | **GitHub Actions: unlimited free minutes on public repos** (2,000 min/month if private). One push = compile + quantize + test + publish, ~5 min | Hugging Face Hub is great for the model file, but has no free compute for the C build + test gate |
 | Zero cost, forever | yes — no card, no trial, no expiry | S3/GCS free tiers expire after 12 months or need a credit card |
 
@@ -90,18 +90,21 @@ Everything is already prepared in this workspace and dry-run tested; the only mi
    ```sh
    GH_OWNER=… GH_TOKEN=… sh scripts/upload_release.sh
    ```
-   → Release `latest` with `brain.kdr` (58,423,412 B) and `kdr-brain` (1,549,624 B) as assets.
+   → Release `latest` with three assets: `brain.kdr` (58 MB), `kdr-brain` (8 MB static binary) and
+   `composer.gguf` (398 MB, Qwen2.5-0.5B-Instruct Q4_K_M — the sentence-forming chat model).
 3. **GitHub Actions takes over** — the pushed `.github/workflows/build.yml` runs on every future push:
-   download the two public fp32 checkpoints from Hugging Face (cached after the first run) → `make`
-   (static binary) → `scripts/pack.py` (int8 quantize + embed 539 passages) → **size gate** (< 80 MB) →
-   **quality gate** (`scripts/eval_c.py --strict`, ≥ 72/75 exact answers) → re-publish release `latest`.
+   download the two public fp32 checkpoints + the composer GGUF from Hugging Face (all cached after the
+   first run) → `scripts/build_llama.sh` (llama.cpp static libs, cached) → `make` (one static binary) →
+   `scripts/pack.py` (int8 quantize + embed 537 passages) → **size gate** (knowledge core < 80 MB, everything
+   < 500 MB) → **quality gates** (`scripts/eval_c.py --strict` ≥ 72/75 exact answers, then
+   `scripts/score.py --strict` = every block of 10 questions ≥ 9/10, composer included) → re-publish `latest`.
    You can watch it at `https://github.com/<you>/kdr-brain/actions`; a red ✗ means the release is *not*
    overwritten, so the last good build always stays downloadable.
 4. **Restoring after a sandbox wipe** needs no token at all (public repo):
    ```sh
    git clone https://github.com/<you>/kdr-brain && cd kdr-brain
-   KDR_REPO=<you>/kdr-brain sh scripts/restore.sh      # downloads both assets, runs a smoke question
-   ./release/kdr-brain release/brain.kdr serve 8080
+   KDR_REPO=<you>/kdr-brain sh scripts/restore.sh      # downloads the three assets, runs a smoke question
+   ./release/kdr-brain release/brain.kdr --chat release/composer.gguf serve 8080
    ```
 
 ### Day-to-day from then on
@@ -110,8 +113,8 @@ Everything is already prepared in this workspace and dry-run tested; the only mi
 * Token expired (401 on push) → repeat only Step 3 (2 minutes).
 
 ### Limits worth knowing (GitHub Free, public repo)
-* 100 MB hard limit per file *inside* git — which is why the 58 MB brain is a release asset, not a
-  committed file (it would also bloat history on every rebuild). Repos should stay under ~1 GB; ours is 1.5 MB.
+* 100 MB hard limit per file *inside* git — which is why the 58 MB brain and the 398 MB composer are release
+  assets, not committed files (they would also bloat history on every rebuild). Repos should stay under ~1 GB; ours is 1.6 MB.
 * Release assets: 2 GB per file, no total cap published. Actions: unlimited minutes, 6 h per job, 10 GB cache.
 * If the repo is private instead: 2,000 Actions minutes and 500 MB of artifact/package storage per month.
 

@@ -2,6 +2,9 @@
 release/brain.kdr
 release/kdr-brain
 release/kdr-brain-portable
+release/kdr-brain-lite
+release/composer.gguf
+release/*.gguf
 # generated from src/index.html by scripts/embed_html.py (make regenerates it)
 src/webui.c
 # python / editor noise

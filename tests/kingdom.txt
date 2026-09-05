@@ -1,0 +1,87 @@
+# Kingdom knowledge — scored set. Format:  question | accepted answer 1 ; accepted answer 2 ; ...
+# A reply scores 1 if it contains ANY accepted phrase (case-insensitive). Lines starting with # are ignored.
+# Target: >= 9/10 per block of 10.
+
+## Crown & royal family
+Who is the king of Dutch Robloxia? | Nicholas Goudhof V
+When was King Nicholas born, and where? | 1984 ; Amsterdam
+Which Roblox user plays King Nicholas Goudhof V? | nickiscoolinroblox
+What are King Nicholas's nicknames? | His Majesty ; The Crown ; Lord Nicholas ; Nick
+Who is the queen and where was she born? | Eloise ; Utrecht
+What is Queen Eloise's nickname? | Fashion Idol
+Who is the heir to the throne? | Friso
+When and where was Prince Friso born? | 2005 ; Dunhag
+Who is Johannes Goudhof? | brother ; uncle
+Who is Emma Bloem? | mistress ; The Beauty
+
+## Government & ministers
+Who is the prime minister of Dutch Robloxia? | Henry Barkworth
+Since when has Henry Barkworth been prime minister? | March 2025
+What roles does Leonard II have? | Finance ; Migration
+Besides being a minister, what did Leonard II make? | wiki ; programmed ; compiled
+Who is the minister of foreign affairs? | DaveRammstein44
+Which ministry does Eliasno lead? | Education ; Culture ; Science
+Who is the minister of housing? | Cas
+Who is the minister of defence? | Bjorn
+Which ministries currently have no minister? | Healthcare ; Social Affairs
+What type of government does the kingdom have? | semi-constitutional monarchy
+
+## Regions & places
+What is the capital of Dutch Robloxia? | Dunhag
+What is the political capital and why is it different? | Oysterdam
+Name the seven home regions. | Dunhag ; Oysterdam ; Hendrikdam ; Heuvelmeer ; Vaderveen ; Duurn ; Bladland
+Which island is inspired by the Wadden Islands? | Hendrikdam
+Which regions have governors? | Heuvelmeer ; Hendrikdam ; Vaderveen
+What is Huis Duurn? | German emperor ; German Kaiser ; exile
+Where is Firewood Forest and what is it used for? | Bladland ; military testing
+Where does the king live? | Coastburgh Castle
+Where is the Consulate? | London
+What overseas holdings does the kingdom have? | London ; Versailles ; Siberia
+
+## Vaderveen & Goudhof Enterprises
+Who bought the island of Vaderveen and when? | Nicholas Goudhof IV ; 1989
+What is Huis Theerots? | teahouse
+When was Huis Theerots built? | 1990 ; 1992
+What is Angel Island known for? | angel statue
+How do you get to Vaderveen? | sea ; boat ; ship ; Mosselman
+What is the Mosselman? | ship ; vessel ; passenger
+Who was Jack Houtman? | overseer ; Antlers ; cult
+When did Jack Houtman die? | 1998
+Who is the CEO of Goudhof Enterprises? | Nicholas Goudhof V
+What did Goudhof Enterprises build? | Eloise Express ; Huis Theerots
+
+## Military
+What are the four branches of the military? | Army ; Navy ; Airforce ; Military Police
+What is the highest rank in the Royal Navy? | Admiral
+What is the lowest rank in the Royal Army? | Private
+What is the 11th Airmobile Brigade? | paratroop
+What is the Royal Guard? | elite ; personal guard ; escort
+Which branch is the Royal Guard part of? | Military Police ; Marechaussee
+How do I join the military? | military-recruitment
+What is the Koninklijke Marechaussee? | Military Police
+Where does the Royal Army train? | Parade Grounds
+Where is the Ministry of Defence located? | Palace of Governorate ; Hendrikdam
+
+## Laws, songs, culture, diplomacy
+How many laws of the realm are there? | eight ; 8
+What is the first law of the realm? | display name
+What does law VI say? | slurs ; derogatory
+What is the national anthem? | Wilhelmus
+What is the national hymn and how many languages does it exist in? | Van Steen en Eik ; By Stone and Oak ; seven ; 7
+Who composed the kingdom's songs? | Nicholas Goudhof V
+What is the motto of Dutch Robloxia? | Leve Goudhof
+Who are the allies of Dutch Robloxia? | Austrian Empire ; Belgium ; Poland ; German Empire ; Vatican ; North Korea ; Arteidian
+Is North Korea an ally of the kingdom? | yes ; ally ; allied
+What are the two allied companies? | Imperial Lines ; Silver Wings
+
+## Vehicles, games, misc
+What is the Buizerd? | DC-3 ; plane
+Where is the Buizerd kept? | Heuvelmeer ; airport
+What is the Eloise Express and when was it built? | train ; 1918
+Where does the Eloise Express depart from? | Silverrail
+What is the most common car in Dutch Robloxia? | Plymouth
+Which car does the king keep at the stables of Eloise Castle? | MG MGA ; MGA Roadster
+What is the VAZ-2101? | Lada ; Russian
+Who is the pope in Dutch Robloxia and who plays him? | Paul VII ; Paulus ; taskapro1001
+When was the kingdom founded? | October 2022 ; Oct 2022
+What is the Royal Bank? | treasury ; earn

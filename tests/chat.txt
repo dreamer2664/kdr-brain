@@ -1,0 +1,51 @@
+# Small talk / instructions / arithmetic — scored set. Format: message | accepted phrase 1 ; phrase 2 ; ...
+# For chat items the accepted phrases are loose: we mostly check the reply is on-topic and not a refusal.
+# Special marker !norefuse = must NOT contain the refusal phrase.  !short = reply <= 40 words.
+
+## Greetings & small talk
+hello | hi ; hello ; hey ; welcome ; greetings
+hi there, how are you? | good ; well ; fine ; great ; thank
+who are you? | Dutch Robloxia ; kingdom ; assistant ; brain
+what can you do? | Dutch Robloxia ; kingdom ; question ; answer
+thanks a lot! | welcome ; glad ; pleasure ; anytime ; happy
+good morning | morning ; hello ; hi
+tell me a fun fact about the kingdom | Goudhof ; Dunhag ; Buizerd ; Eloise ; Nicholas ; Robloxia ; king
+bye! | bye ; goodbye ; see you ; take care ; farewell ; Leve Goudhof
+I'm bored | Dutch Robloxia ; kingdom ; question ; game ; fun ; tell you
+can you speak Dutch? | Dutch ; Nederlands ; English ; !norefuse
+
+## Arithmetic & logic
+what is 2+2? | 4 ; four
+what's 17 times 23? | 391
+what is 144 divided by 12? | 12
+what is 15% of 200? | 30
+if I have 3 apples and eat one, how many are left? | 2 ; two
+which is bigger, 0.9 or 0.11? | 0.9
+what is the square root of 81? | 9
+what is 1000 minus 1? | 999
+how many days are in a leap year? | 366
+is 17 a prime number? | yes ; is a prime ; is prime
+
+## Instructions
+write one sentence welcoming a new citizen to Dutch Robloxia | welcome
+list the four military branches as bullet points | Army ; Navy ; Airforce ; Military Police
+explain in one sentence what Dutch Robloxia is | Roblox ; kingdom ; monarchy
+give me three questions I could ask you about the kingdom | ? ; king ; capital ; minister ; region
+summarize who Leonard II is in ten words or fewer | Finance ; Migration ; minister ; wiki
+translate 'long live Goudhof' into Dutch | Leve Goudhof
+say something nice about King Nicholas | Nicholas ; king ; His Majesty
+what's the capital? and who rules there? | Dunhag ; Nicholas
+answer with just the name: prime minister of Dutch Robloxia | Henry Barkworth ; !short
+repeat after me: Leve Goudhof! | Leve Goudhof
+
+## Outside the kingdom (answer + flag, never refuse)
+what is the capital of France? | Paris ; !norefuse
+who wrote Romeo and Juliet? | Shakespeare ; !norefuse
+what is H2O? | water ; !norefuse
+how many continents are there? | 7 ; seven ; !norefuse
+what is the largest planet in the solar system? | Jupiter ; !norefuse
+who painted the Mona Lisa? | Leonardo ; da Vinci ; !norefuse
+what is the capital of Japan? | Tokyo ; !norefuse
+which planet is closest to the sun? | Mercury ; !norefuse
+how many legs does a spider have? | eight ; 8 ; !norefuse
+what is the boiling point of water in Celsius? | 100 ; !norefuse

@@ -5,10 +5,24 @@
  *   kdr-brain brain.kdr bench                  (debug)
  */
 #define _GNU_SOURCE
+#include <stdio.h>
 #include "brain.h"
+#ifndef KDR_NO_CHAT
+#include "chat.h"
+#else
+typedef struct Chat Chat; typedef struct { const char *role; const char *text; } ChatTurn; typedef int (*chat_stream_fn)(const char *, void *);
+static Chat *chat_open(const char *p, int t, int n) { (void)p; (void)t; (void)n; return NULL; }
+static void chat_close(Chat *c) { (void)c; }
+static const char *chat_model_desc(Chat *c) { (void)c; return ""; }
+static int chat_is_live_question(const char *q) { (void)q; return 0; }
+static int chat_reply(Chat *c, const Brain *b, const Answer *a, int ood, const char *q, const ChatTurn *h, int nh, char *out, size_t cap, chat_stream_fn s, void *ud, int *uf, double *ms)
+{ (void)c; (void)b; (void)a; (void)ood; (void)q; (void)h; (void)nh; (void)s; (void)ud; (void)uf; (void)ms; snprintf(out, cap, "chat disabled"); return 0; }
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
+#include <ctype.h>
 #include <unistd.h>
 #include <signal.h>
 #include <sys/socket.h>
@@ -18,6 +32,8 @@
 #include <errno.h>
 #include <time.h>
 
+static Chat *g_chat = NULL;   /* optional composer (GGUF chat model) */
+static int g_history_max = 6;  /* previous turns fed back to the composer */
 extern const char kdr_index_html[];   /* web UI, embedded at build time (webui.c) */
 extern const unsigned int kdr_index_html_len;
 
@@ -39,13 +55,239 @@ static void write_answer_json(FILE *f, Brain *b, const Answer *a, const char *q)
     fputs(",\"source\":", f); json_escape(f, a->source);
     fprintf(f, ",\"confidence\":%.3f,\"span_score\":%.2f,\"null_score\":%.2f,\"ms_retrieve\":%.1f,\"ms_read\":%.1f,\"hits\":[",
             a->confidence, a->span_score, a->null_score, a->ms_retrieve, a->ms_read);
-    for (int i = 0; i < a->n_hits && i < 5; i++) {
+    for (int i = 0; i < a->n_hits && i < 8; i++) {
         int p = a->hits[i].passage;
         fprintf(f, "%s{\"score\":%.3f,\"dense\":%.3f,\"lexical\":%.2f,\"title\":", i ? "," : "", a->hits[i].score, a->hits[i].dense, a->hits[i].lexical);
         json_escape(f, brain_passage_title(b, p)); fputs(",\"text\":", f); json_escape(f, brain_passage_text(b, p));
         fputs(",\"url\":", f); json_escape(f, brain_passage_url(b, p)); fputs(",\"source\":", f); json_escape(f, brain_passage_source(b, p)); fputc('}', f);
     }
     fputs("]}", f);
+}
+
+
+/* ---------------------------------------------------------------- chat (composer) */
+/* minimal JSON string extractor: finds "key":"value" (handles \" \\ \n \uXXXX) into out */
+static int json_get_str(const char *json, const char *key, char *out, size_t cap) {
+    char pat[64]; snprintf(pat, sizeof pat, "\"%s\"", key);
+    const char *k = strstr(json, pat); if (!k) return 0;
+    const char *p = strchr(k + strlen(pat), ':'); if (!p) return 0; p++;
+    while (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r') p++;
+    if (*p != '"') return 0; p++;
+    size_t o = 0;
+    while (*p && *p != '"') {
+        unsigned c = (unsigned char)*p;
+        if (c == '\\' && p[1]) {
+            p++;
+            switch (*p) {
+                case 'n': c = '\n'; break; case 't': c = '\t'; break; case 'r': c = '\r'; break;
+                case 'u': { unsigned v = 0; if (sscanf(p + 1, "%4x", &v) == 1) { p += 4;
+                    if (v < 0x80) c = v; else if (v < 0x800) { if (o + 2 < cap) { out[o++] = 0xC0 | (v >> 6); out[o++] = 0x80 | (v & 63); } p++; continue; }
+                    else { if (o + 3 < cap) { out[o++] = 0xE0 | (v >> 12); out[o++] = 0x80 | ((v >> 6) & 63); out[o++] = 0x80 | (v & 63); } p++; continue; } } break; }
+                default: c = (unsigned char)*p;
+            }
+        }
+        if (o + 1 < cap) out[o++] = (char)c;
+        p++;
+    }
+    out[o] = 0; return 1;
+}
+/* parse "history":[{"role":"user","text":"..."},...] into turns (bounded) */
+static int json_get_history(const char *json, ChatTurn *turns, char *store, size_t store_cap, int max_turns) {
+    const char *h = strstr(json, "\"history\""); if (!h) return 0;
+    const char *p = strchr(h, '['); if (!p) return 0;
+    int n = 0; size_t used = 0;
+    while (n < max_turns) {
+        const char *obj = strchr(p, '{'); if (!obj) break;
+        const char *end = strchr(obj, '}'); if (!end) break;
+        char tmp[4096]; size_t l = (size_t)(end - obj + 1); if (l >= sizeof tmp) l = sizeof tmp - 1; memcpy(tmp, obj, l); tmp[l] = 0;
+        char role[16] = "user", text[2048] = "";
+        json_get_str(tmp, "role", role, sizeof role); json_get_str(tmp, "text", text, sizeof text);
+        size_t tl = strlen(text) + 1;
+        if (text[0] && used + tl < store_cap) { memcpy(store + used, text, tl); turns[n].role = strcmp(role, "assistant") == 0 ? "assistant" : "user"; turns[n].text = store + used; used += tl; n++; }
+        p = end + 1; if (*p == ']') break;
+    }
+    return n;
+}
+
+/* Follow-up questions ("and his wife?") carry no entity: borrow proper nouns from the last turns for retrieval. */
+static int needs_context(const char *q) {
+    static const char *pron[] = { "his","her","hers","their","theirs","he","she","they","them","him","it","its","that","this","there","those","these","one","else","also","too","about", NULL };
+    int words = 0; char w[64]; int wl = 0; int hit = 0;
+    for (const char *p = q;; p++) {
+        if (*p && (isalnum((unsigned char)*p) || *p == '\'')) { if (wl < 63) w[wl++] = (char)tolower((unsigned char)*p); }
+        else if (wl) { w[wl] = 0; words++; for (int i = 0; pron[i]; i++) if (strcmp(w, pron[i]) == 0) hit = 1; wl = 0; }
+        if (!*p) break;
+    }
+    return hit || words <= 5;
+}
+/* set of words that occur in passage titles (lowercased): the kingdom's entity vocabulary */
+static char **g_ent = NULL; static int g_n_ent = 0;
+static int ent_cmp(const void *a, const void *b) { return strcmp(*(char *const *)a, *(char *const *)b); }
+static void build_entities(const Brain *b) {
+    int cap = 4096; g_ent = malloc(sizeof(char *) * cap);
+    for (int i = 0; i < brain_n_passages(b); i++) {
+        const char *t = brain_passage_title(b, i);
+        while (*t) {
+            while (*t && !isalnum((unsigned char)*t)) t++;
+            const char *st = t; while (*t && (isalnum((unsigned char)*t) || *t == '\'')) t++;
+            size_t l = (size_t)(t - st); if (l < 3 || l > 40) continue;
+            char w[48]; for (size_t k = 0; k < l; k++) w[k] = (char)tolower((unsigned char)st[k]); w[l] = 0;
+            static const char *skip[] = { "the","and","for","von","van","der","und","his","every","page","wiki","site","footer","image","caption","how","works","notable","official","poster","propaganda",
+                                          "france","germany","siberia","netherlands","london", NULL };   /* real-world names in game titles are not kingdom entities */
+            int sk = 0; for (int j = 0; skip[j]; j++) if (strcmp(w, skip[j]) == 0) { sk = 1; break; }
+            if (sk) continue;
+            char *key = w; if (bsearch(&key, g_ent, g_n_ent, sizeof(char *), ent_cmp)) continue;
+            if (g_n_ent < cap) { g_ent[g_n_ent++] = strdup(w); qsort(g_ent, g_n_ent, sizeof(char *), ent_cmp); }
+        }
+    }
+}
+static int is_entity_word(const char *w) {
+    char lw[48]; size_t l = strlen(w); if (l >= sizeof lw) return 0;
+    for (size_t k = 0; k <= l; k++) lw[k] = (char)tolower((unsigned char)w[k]);
+    char *e = strstr(lw, "'s"); if (e && !e[2]) *e = 0;
+    char *key = lw; return g_ent && bsearch(&key, g_ent, g_n_ent, sizeof(char *), ent_cmp) != NULL;
+}
+static void add_proper_nouns(const char *text, char *out, size_t cap, int max_words) {
+    static const char *stop[] = { "The","A","An","I","It","If","You","Yes","No","In","On","At","He","She","They","We","This","That","There","Hi","Hello","Hey","How","What","Who","Where","When","Why","Which","Sure","Of","And","Or","But","So","Is","Are","Was","Were","Do","Does","Did","Can","Could","Would","Should","My","Your","His","Her","Its","Our","Their","Not","To","For","With","As","By","From","About", NULL };
+    int added = 0; const char *p = text;
+    while (*p && added < max_words) {
+        while (*p && !isalnum((unsigned char)*p)) p++;
+        const char *st = p; while (*p && (isalnum((unsigned char)*p) || *p == '\'' || *p == '&')) p++;
+        size_t l = (size_t)(p - st); if (!l) continue;
+        if (!isupper((unsigned char)*st)) continue;
+        char w[64]; if (l >= sizeof w) l = sizeof w - 1; memcpy(w, st, l); w[l] = 0;
+        int skip = 0; for (int i = 0; stop[i]; i++) if (strcmp(w, stop[i]) == 0) { skip = 1; break; }
+        if (skip || !is_entity_word(w)) continue;
+        char pat[70]; snprintf(pat, sizeof pat, " %s ", w); if (strstr(out, pat)) continue;   /* dedupe */
+        size_t ol = strlen(out); if (ol + l + 2 >= cap) break;
+        out[ol] = ' '; memcpy(out + ol + 1, w, l); out[ol + 1 + l] = ' '; out[ol + 2 + l] = 0; added++;
+    }
+}
+static void build_retrieval_query(const char *q, const ChatTurn *turns, int nh, char *out, size_t cap) {
+    snprintf(out, cap, "%s", q);
+    if (nh == 0 || !needs_context(q)) return;
+    char extra[512] = " ";
+    for (int i = nh - 1; i >= 0 && i >= nh - 2; i--) add_proper_nouns(turns[i].text, extra, sizeof extra, 8);   /* last assistant + last user turn */
+    if (strlen(extra) > 1) { size_t l = strlen(out); snprintf(out + l, cap - l, " (%s)", extra + 1); }
+}
+
+
+/* ---- routing: does this message need the knowledge base, or is it small talk? ---- */
+static int has_entity(const char *q) {
+    /* a few kingdom-life words that do not occur in passage titles but clearly ask about the kingdom ("what can I play?") */
+    static const char *domain[] = { "play", "game", "games", "rank", "ranks", "citizen", "citizens", "server", NULL };
+    char w[64]; int wl = 0;
+    for (const char *p = q;; p++) {
+        if (*p && (isalnum((unsigned char)*p) || *p == '\'')) { if (wl < 63) w[wl++] = *p; }
+        else if (wl) { w[wl] = 0; wl = 0; if (strlen(w) >= 3 && is_entity_word(w)) return 1;
+                       for (int i = 0; domain[i]; i++) if (strcasecmp(w, domain[i]) == 0) return 1; }
+        if (!*p) break;
+    }
+    return 0;
+}
+/* 1 = opinion/persona/small talk that never needs facts; 2 = greeting/thanks/bye (needs facts only if an entity is named); 0 = neither */
+static int smalltalk_tier(const char *q) {
+    char norm[2100]; size_t o = 1; norm[0] = ' ';
+    for (const char *p = q; *p && o < sizeof norm - 2; p++) { unsigned char c = (unsigned char)*p; norm[o++] = isalnum(c) || c == '\'' ? (char)tolower(c) : ' '; }
+    norm[o++] = ' '; norm[o] = 0;
+    static const char *tierA[] = { " how are you ", " how r u ", " who are you ", " what are you ", " what can you do ", " what do you do ", " favourite ", " favorite ", " do you like ", " do you love ",
+        " what do you think ", " your opinion ", " joke ", " bored ", " boring ", " i m bored ", " tell me about yourself ", " are you a bot ", " are you human ", " are you real ", " what s your name ", " your name ", NULL };
+    static const char *tierB[] = { " hello ", " hi ", " hey ", " hiya ", " yo ", " sup ", " what s up ", " whats up ", " good morning ", " good evening ", " good night ", " good afternoon ", " thank ", " thanks ", " thx ", " ty ",
+        " bye ", " goodbye ", " see you ", " see ya ", " cya ", " lol ", " haha ", " nice ", " cool ", " ok ", " okay ", " great ", " awesome ", " wow ", " love you ", " you re great ", " you are great ", " good bot ", " well done ", NULL };
+    for (int i = 0; tierA[i]; i++) if (strstr(norm, tierA[i])) return 1;
+    /* tier B only counts when it makes up (almost) the whole message: short and no question word */
+    int words = 0; for (size_t i = 1; i < o; i++) if (norm[i] == ' ' && norm[i - 1] != ' ') words++;
+    static const char *qw[] = { " who ", " what ", " when ", " where ", " which ", " why ", " how ", " tell ", " list ", " name ", " explain ", " give ", " show ", " is ", " are ", " does ", " do ", " can ", " did ", " was ", NULL };
+    int hasq = 0; for (int i = 0; qw[i]; i++) if (strstr(norm, qw[i])) { hasq = 1; break; }
+    if (words <= 6 && !hasq) for (int i = 0; tierB[i]; i++) if (strstr(norm, tierB[i])) return 2;
+    return 0;
+}
+/* "what is 15% of 200", "is 17 a prime number", "which is bigger, 0.9 or 0.11": numbers + an arithmetic word/operator -> never retrieval
+ * (the entity vocabulary contains words like "prime", and the reader would hand the composer nonsense) */
+static int is_arithmetic(const char *q) {
+    int digits = 0; for (const char *p = q; *p; p++) if (isdigit((unsigned char)*p)) digits++;
+    if (!digits) return 0;
+    char norm[2100]; size_t o = 1; norm[0] = ' ';
+    for (const char *p = q; *p && o < sizeof norm - 2; p++) { unsigned char c = (unsigned char)*p; norm[o++] = isalnum(c) || c == '.' ? (char)tolower(c) : ' '; }
+    norm[o++] = ' '; norm[o] = 0;
+    static const char *ops[] = { " plus ", " minus ", " times ", " divided ", " multiplied ", " percent ", " square root ", " squared ", " cubed ", " prime number ",
+        " bigger ", " larger ", " smaller ", " greater ", " less than ", " more than ", " how many are left ", " sum of ", " product of ", " difference between ", " average of ", " half of ", " twice ", " equals ", NULL };
+    for (int i = 0; ops[i]; i++) if (strstr(norm, ops[i])) return 1;
+    if (strchr(q, '%')) return 1;
+    for (const char *p = q + 1; *p; p++) if (strchr("+-*/x^", *p)) {   /* digit <op> digit, spaces allowed */
+        const char *l = p - 1; while (l > q && *l == ' ') l--; const char *r = p + 1; while (*r == ' ') r++;
+        if (isdigit((unsigned char)*l) && isdigit((unsigned char)*r)) return 1;
+    }
+    return 0;
+}
+enum { ROUTE_CHAT = 0, ROUTE_FACTS = 1, ROUTE_OOD = 2 };
+/* runs retrieval when useful. ROUTE_FACTS: attach ans; ROUTE_CHAT: small talk, no facts; ROUTE_OOD: a real question the wikis
+ * do not cover -> the composer answers from its own knowledge and the reply gets flagged "(not from the wikis)" */
+static int route(Brain *b, const char *q, const ChatTurn *turns, int nh, Answer *ans, char *rq, size_t rq_cap) {
+    memset(ans, 0, sizeof *ans);
+    build_retrieval_query(q, turns, nh, rq, rq_cap);
+    int ent = has_entity(rq), tier = smalltalk_tier(q);
+    if (tier == 1 || (tier == 2 && !ent) || chat_is_live_question(q)) return ROUTE_CHAT;
+    /* a short follow-up ("why that one?", "really?") right after an opinion/small-talk turn stays in chat mode */
+    if (nh >= 2 && !has_entity(q) && strlen(q) < 40 && smalltalk_tier(turns[nh - 2].text) == 1) return ROUTE_CHAT;
+    if (is_arithmetic(q)) return ROUTE_OOD;
+    brain_answer(b, rq, ans);
+    /* "what's the capital? and who rules there?" - retrieve the second question too and interleave its hits */
+    { const char *qm = strchr(q, '?');
+      if (qm && qm[1]) {
+        const char *p2 = qm + 1; while (*p2 && (isspace((unsigned char)*p2) || *p2 == ',')) p2++;
+        if (strncasecmp(p2, "and ", 4) == 0) p2 += 4;
+        if (strlen(p2) >= 6) {
+            char q2[2600]; snprintf(q2, sizeof q2, "%s", p2);
+            char extra[512] = " "; add_proper_nouns(q, extra, sizeof extra, 6);
+            if (strlen(extra) > 1) { size_t l = strlen(q2); snprintf(q2 + l, sizeof q2 - l, " (%s)", extra + 1); }
+            Answer a2; brain_answer(b, q2, &a2);
+            Hit merged[8]; int nm = 0;
+            for (int i = 0; i < 8 && nm < 8; i++) {
+                if (i < ans->n_hits) merged[nm++] = ans->hits[i];
+                if (i < a2.n_hits && nm < 8) { int dup = 0; for (int k = 0; k < nm; k++) if (merged[k].passage == a2.hits[i].passage) dup = 1; if (!dup) merged[nm++] = a2.hits[i]; }
+            }
+            memcpy(ans->hits, merged, sizeof(Hit) * nm); ans->n_hits = nm;
+            if (a2.confidence > ans->confidence + 0.2f) ans->confidence = a2.confidence;   /* facts are worth attaching if either part is answerable */
+        }
+      } }
+    /* without a named entity we also need the reader to prefer a span over "no answer" (capital of France -> Versailles otherwise) */
+    if (ent || (ans->confidence >= 0.30f && ans->span_score >= ans->null_score)) return ROUTE_FACTS;
+    return ROUTE_OOD;
+}
+/* the reply names something only the kingdom has -> it was answered from the cheat-sheet, not general knowledge */
+static int mentions_kingdom(const char *reply) {
+    static const char *names[] = { "robloxia", "goudhof", "dunhag", "oysterdam", "hendrikdam", "heuvelmeer", "vaderveen", "duurn", "bladland", "barkworth",
+        "eloise", "friso", "buizerd", "mosselman", "theerots", "houtman", "silverrail", "marechaussee", "nickiscoolinroblox", "kdrwiki", "dutchbloxia", NULL };
+    char low[8192]; size_t i = 0; for (; reply[i] && i < sizeof low - 1; i++) low[i] = (char)tolower((unsigned char)reply[i]); low[i] = 0;
+    for (int k = 0; names[k]; k++) if (strstr(low, names[k])) return 1;
+    return 0;
+}
+static const char *OOD_NOTE = " (not from the wikis)";
+/* deterministic provenance flag: the 0.5B composer cannot be trusted to add it itself */
+static int needs_ood_note(int rt, const char *reply) {
+    if (rt != ROUTE_OOD || !reply[0]) return 0;
+    if (strcasestr(reply, "not from the wiki") || strcasestr(reply, "wikis say")) return 0;
+    return !mentions_kingdom(reply);
+}
+
+typedef struct { int fd; int ok; } StreamCtx;
+static int stream_piece(const char *piece, void *ud) {
+    StreamCtx *sc = ud; if (!sc->ok) return 1;
+    /* SSE event with JSON-escaped token */
+    char buf[512]; size_t o = 0; const char *pre = "data: {\"t\":\""; memcpy(buf, pre, strlen(pre)); o = strlen(pre);
+    for (const unsigned char *s = (const unsigned char *)piece; *s && o < sizeof buf - 12; s++) {
+        if (*s == '"') { buf[o++] = '\\'; buf[o++] = '"'; } else if (*s == '\\') { buf[o++] = '\\'; buf[o++] = '\\'; }
+        else if (*s == '\n') { buf[o++] = '\\'; buf[o++] = 'n'; } else if (*s < 0x20) { o += snprintf(buf + o, 8, "\\u%04x", *s); } else buf[o++] = *s;
+    }
+    memcpy(buf + o, "\"}\n\n", 4); o += 4;
+    ssize_t w = send(sc->fd, buf, o, MSG_NOSIGNAL); if (w <= 0) { sc->ok = 0; return 1; }
+    return 0;
+}
+static void write_chat_json(FILE *f, Brain *b, const Answer *a, const char *q, const char *reply, int used_facts, double ms_chat) {
+    fputs("{\"reply\":", f); json_escape(f, reply);
+    fprintf(f, ",\"used_facts\":%s,\"ms_chat\":%.0f,\"retrieval\":", used_facts ? "true" : "false", ms_chat);
+    write_answer_json(f, b, a, q); fputs("}", f);
 }
 
 /* ---------------------------------------------------------------- HTTP */
@@ -74,7 +316,37 @@ static void serve(Brain *b, int port) {
         char req[8192]; ssize_t n = recv(c, req, sizeof req - 1, 0); if (n <= 0) { close(c); continue; }
         req[n] = 0;
         char method[8] = {0}, path[4096] = {0}; sscanf(req, "%7s %4095s", method, path);
-        if (strncmp(path, "/api/ask", 8) == 0) {
+        if (strncmp(path, "/api/chat", 9) == 0 && g_chat) {
+            /* POST {"q":"...","history":[{"role":"user","text":".."},...],"stream":true} */
+            char *body = strstr(req, "\r\n\r\n"); if (body) body += 4; else body = "";
+            /* if the body did not fully arrive in the first recv, read the rest (Content-Length) */
+            char *cl = strcasestr(req, "content-length:"); size_t want = cl ? strtoul(cl + 15, NULL, 10) : 0; size_t have = strlen(body);
+            char *full = NULL;
+            if (want > have) { full = malloc(want + 1); memcpy(full, body, have); size_t got = have; while (got < want) { ssize_t r = recv(c, full + got, want - got, 0); if (r <= 0) break; got += r; } full[got] = 0; body = full; }
+            static char q[2048], store[16384]; ChatTurn turns[12]; q[0] = 0;
+            json_get_str(body, "q", q, sizeof q);
+            int nh = json_get_history(body, turns, store, sizeof store, g_history_max);
+            int do_stream = strstr(body, "\"stream\":true") != NULL;
+            if (!q[0]) { http_reply(c, 400, "text/plain", "missing q", 9); free(full); close(c); continue; }
+            char rq[2600]; Answer ans; int facts = route(b, q, turns, nh, &ans, rq, sizeof rq);
+            static char reply[8192]; int used = 0; double ms = 0;
+            if (do_stream) {
+                const char *hdr = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-store\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n";
+                send_all(c, hdr, strlen(hdr));
+                StreamCtx sc = { c, 1 };
+                chat_reply(g_chat, b, facts == ROUTE_FACTS ? &ans : NULL, facts == ROUTE_OOD, q, turns, nh, reply, sizeof reply, stream_piece, &sc, &used, &ms);
+                if (needs_ood_note(facts, reply)) { strncat(reply, OOD_NOTE, sizeof reply - strlen(reply) - 1); stream_piece(OOD_NOTE, &sc); }
+                char *buf = NULL; size_t bl = 0; FILE *f = open_memstream(&buf, &bl); fputs("data: ", f); write_chat_json(f, b, &ans, q, reply, used, ms); fputs("\n\ndata: [DONE]\n\n", f); fclose(f);
+                send_all(c, buf, bl); free(buf);
+            } else {
+                chat_reply(g_chat, b, facts == ROUTE_FACTS ? &ans : NULL, facts == ROUTE_OOD, q, turns, nh, reply, sizeof reply, NULL, NULL, &used, &ms);
+                if (needs_ood_note(facts, reply)) strncat(reply, OOD_NOTE, sizeof reply - strlen(reply) - 1);
+                char *buf = NULL; size_t bl = 0; FILE *f = open_memstream(&buf, &bl); write_chat_json(f, b, &ans, q, reply, used, ms); fclose(f);
+                http_reply(c, 200, "application/json; charset=utf-8", buf, bl); free(buf);
+            }
+            fprintf(stderr, "[chat] %-45.45s -> %-50.50s (%s conf %.2f, %.0f ms%s)\n", q, reply, facts == ROUTE_FACTS ? "facts" : facts == ROUTE_OOD ? "ood  " : "chat ", ans.confidence, ms, strcmp(rq, q) ? " +ctx" : "");
+            free(full);
+        } else if (strncmp(path, "/api/ask", 8) == 0) {
             char q[2048] = {0};
             char *qs = strstr(path, "q=");
             if (qs) { snprintf(q, sizeof q, "%s", qs + 2); char *amp = strchr(q, '&'); if (amp) *amp = 0; url_decode(q); }
@@ -84,7 +356,7 @@ static void serve(Brain *b, int port) {
             http_reply(c, 200, "application/json; charset=utf-8", buf, bl); free(buf);
             fprintf(stderr, "[ask] %-50.50s -> %-40.40s (%.0f+%.0f ms, conf %.2f)\n", q, ans.answer, ans.ms_retrieve, ans.ms_read, ans.confidence);
         } else if (strncmp(path, "/api/stats", 10) == 0) {
-            char buf[256]; int l = snprintf(buf, sizeof buf, "{\"passages\":%d,\"ok\":true}", brain_n_passages(b));
+            char buf[512]; int l = snprintf(buf, sizeof buf, "{\"passages\":%d,\"ok\":true,\"chat\":%s,\"model\":\"%s\"}", brain_n_passages(b), g_chat ? "true" : "false", g_chat ? chat_model_desc(g_chat) : "");
             http_reply(c, 200, "application/json", buf, l);
         } else if (strcmp(path, "/") == 0 || strncmp(path, "/index.html", 11) == 0 || strncmp(path, "/?", 2) == 0) {
             http_reply(c, 200, "text/html; charset=utf-8", kdr_index_html, kdr_index_html_len);
@@ -96,12 +368,22 @@ static void serve(Brain *b, int port) {
 }
 
 int main(int argc, char **argv) {
-    if (argc < 3) { fprintf(stderr, "usage: %s brain.kdr ask \"question\" | serve PORT | tokens TEXT | bench\n", argv[0]); return 1; }
+    if (argc < 3) { fprintf(stderr, "usage: %s brain.kdr [--chat model.gguf] ask|chat \"question\" | serve PORT | tokens TEXT | bench\n", argv[0]); return 1; }
     int threads = 2; const char *env = getenv("KDR_THREADS"); if (env) threads = atoi(env);
     Brain *b = brain_open(argv[1], threads); if (!b) return 1;
+    const char *model = getenv("KDR_CHAT_MODEL");
+    for (int i = 2; i + 1 < argc; i++) if (strcmp(argv[i], "--chat") == 0) { model = argv[i + 1]; for (int j = i; j + 2 < argc; j++) argv[j] = argv[j + 2]; argc -= 2; break; }
+    if (model && model[0]) { g_chat = chat_open(model, threads, 2048); if (!g_chat) return 1; fprintf(stderr, "composer: %s\n", chat_model_desc(g_chat)); build_entities(b); }
     if (strcmp(argv[2], "ask") == 0 && argc > 3) {
         Answer a; brain_answer(b, argv[3], &a);
         write_answer_json(stdout, b, &a, argv[3]); printf("\n");
+    } else if (strcmp(argv[2], "chat") == 0 && argc > 3) {
+        if (!g_chat) { fprintf(stderr, "no composer: pass --chat model.gguf or set KDR_CHAT_MODEL\n"); return 1; }
+        Answer a; char rq[2600]; int facts = route(b, argv[3], NULL, 0, &a, rq, sizeof rq);
+        static char reply[8192]; int used = 0; double ms = 0;
+        chat_reply(g_chat, b, facts == ROUTE_FACTS ? &a : NULL, facts == ROUTE_OOD, argv[3], NULL, 0, reply, sizeof reply, NULL, NULL, &used, &ms);
+        if (needs_ood_note(facts, reply)) strncat(reply, OOD_NOTE, sizeof reply - strlen(reply) - 1);
+        write_chat_json(stdout, b, &a, argv[3], reply, used, ms); printf("\n");
     } else if (strcmp(argv[2], "tokens") == 0 && argc > 3) {
         int ids[512]; int n = brain_tokenize(b, argv[3], ids, 512);
         for (int i = 0; i < n; i++) printf("%d%s", ids[i], i + 1 < n ? " " : "\n");
@@ -114,5 +396,6 @@ int main(int argc, char **argv) {
         const char *qs[] = { "Who is the king of Dutch Robloxia?", "What is the capital?", "When was the Eloise Express built?" };
         for (int i = 0; i < 3; i++) { Answer a; brain_answer(b, qs[i], &a); printf("%s -> %s  [%.0f ms retrieve, %.0f ms read]\n", qs[i], a.answer, a.ms_retrieve, a.ms_read); }
     } else { fprintf(stderr, "bad command\n"); return 1; }
+    if (g_chat) chat_close(g_chat);
     brain_close(b); return 0;
 }
