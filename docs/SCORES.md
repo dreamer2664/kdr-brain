@@ -66,6 +66,10 @@ TOTAL 109/110   avg 2.8 s per reply (2 vCPU)
    FACTS; 1.05 in turn let it wander into unrelated fact lines; 1.08 does neither.
 9. **List questions get 260 new tokens** ("what are the eight laws", "list all …") and the top passage is kept
    whole (600 chars) instead of trimmed to 240.
+10. **Grounding check + one retry**: when the reader is confident (≥ 0.6) about a short span, the reply must contain
+    it. If the greedy decode misses it ("…and he lives in Heuvelmeer" while the reader said Coastburgh Castle), the
+    engine rewinds the KV cache to the prompt and decodes once more with a different repetition penalty, keeping the
+    grounded reply. Costs ~1 s only in the rare miss case; such replies are buffered instead of streamed.
 
 ## Known misses / not fixable at this size
 

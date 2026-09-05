@@ -91,7 +91,8 @@ python3 scripts/score.py --strict  # quality gate
 Only `src/`, `data/`, `scripts/`, `tests/`, `docs/` are versioned (1.5 MB). The build outputs are rebuilt by GitHub
 Actions on every push (size gate + both quality gates) and published as a GitHub Release;
 `KDR_REPO=owner/kdr-brain sh scripts/restore.sh` downloads them back (`KDR_LITE=1` for the 60 MB chat-less pair).
-Setup: `docs/CLOUD_SETUP.md`. Debugging: `KDR_DEBUG_PROMPT=1` prints every prompt sent to the composer.
+Setup: `docs/CLOUD_SETUP.md`. Debugging: `KDR_DEBUG_PROMPT=1` prints every prompt sent to the composer (and grounding retries), `KDR_REPEAT=1.05`
+overrides the repetition penalty, `KDR_NO_VERIFY=1` disables the grounding retry, `KDR_THREADS=n` sets CPU threads.
 
 ## Honest limitations
 

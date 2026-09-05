@@ -131,6 +131,15 @@ static int adds_nothing(const char *t, const char **seen, int ns) {
     return 0;
 }
 
+/* does the reply carry the reader's answer? (>= 70% of its content words). Only meaningful for confident, short spans. */
+static int reply_grounded(const char *reply, const Answer *a) {
+    if (!a || a->confidence < 0.6f || !a->answer[0] || strlen(a->answer) > 100 || strcasecmp(a->answer, "Dutch Robloxia") == 0) return 1;
+    char w[40][24]; int n = content_words(a->answer, w, 40); if (n == 0) return 1;
+    char v[400][24]; int m = content_words(reply, v, 400), found = 0;
+    for (int i = 0; i < n; i++) for (int k = 0; k < m; k++) if (strcmp(w[i], v[k]) == 0) { found++; break; }
+    return found * 10 >= n * 7;
+}
+
 static void build_prompt(Buf *p, const Brain *b, const Answer *a, int ood, const char *q, const ChatTurn *hist, int nh, int use_facts) {
     bput(p, "<|im_start|>system\n"); bput(p, SYSTEM);
     bput(p, "<|im_end|>\n");
@@ -210,6 +219,35 @@ static void dedupe_sentences(char *text) {
     while (w > text && isspace((unsigned char)w[-1])) *--w = 0;
 }
 
+/* greedy decode from the current KV state (prompt already decoded). Writes the reply (prefill + generated) into out. */
+static int gen_loop(Chat *c, float rp, int max_new, const char *pf, char *out, size_t out_cap, chat_stream_fn stream, void *ud) {
+    struct llama_sampler_chain_params sp = llama_sampler_chain_default_params(); sp.no_perf = true;
+    struct llama_sampler *smpl = llama_sampler_chain_init(sp);
+    llama_sampler_chain_add(smpl, llama_sampler_init_penalties(llama_vocab_n_tokens(c->vocab), 128, rp, 0.0f, 0.0f));
+    llama_sampler_chain_add(smpl, llama_sampler_init_greedy());
+    size_t on = 0; out[0] = 0; int produced = 0;
+    { size_t pl = strlen(pf); if (pl && pl + 1 < out_cap) { memcpy(out, pf, pl + 1); on = pl; if (stream) stream(pf, ud); } }
+    char piece[64];
+    for (int i = 0; i < max_new; i++) {
+        llama_token id = llama_sampler_sample(smpl, c->ctx, -1);   /* llama_sampler_sample already accepts the token */
+        if (llama_vocab_is_eog(c->vocab, id)) break;
+        int l = llama_token_to_piece(c->vocab, id, piece, sizeof piece - 1, 0, false);
+        if (l < 0) l = 0; piece[l] = 0;
+        if (on + l + 1 < out_cap) { memcpy(out + on, piece, l); on += l; out[on] = 0; }
+        produced++;
+        if (stream && stream(piece, ud)) break;
+        /* stop if the model starts a new turn on its own */
+        if (on >= 10 && strstr(out + (on > 20 ? on - 20 : 0), "<|im_")) { char *s = strstr(out, "<|im_"); if (s) { *s = 0; on = (size_t)(s - out); } break; }
+        llama_token next = id;
+        if (llama_decode(c->ctx, llama_batch_get_one(&next, 1)) != 0) { c->sys_cached = 0; break; }
+    }
+    /* trim + drop sentences that already appeared (small models sometimes loop) */
+    while (on > 0 && isspace((unsigned char)out[on - 1])) out[--on] = 0;
+    dedupe_sentences(out);
+    llama_sampler_free(smpl);
+    return produced;
+}
+
 int chat_reply(Chat *c, const Brain *b, const Answer *a, int ood, const char *question, const ChatTurn *hist, int nh,
                char *out, size_t out_cap, chat_stream_fn stream, void *ud, int *used_facts, double *ms) {
     double t0 = now_ms();
@@ -245,37 +283,29 @@ int chat_reply(Chat *c, const Brain *b, const Answer *a, int ood, const char *qu
         if (c->sys_cached) skip = c->n_sys;
     } else { llama_memory_clear(mem, true); c->sys_cached = 0; }
 
-    struct llama_sampler_chain_params sp = llama_sampler_chain_default_params(); sp.no_perf = true;
-    struct llama_sampler *smpl = llama_sampler_chain_init(sp);
+    struct llama_batch batch = llama_batch_get_one(tok + skip, n - skip);
+    if (llama_decode(c->ctx, batch) != 0) { c->sys_cached = 0; free(tok); snprintf(out, out_cap, "Sorry, I hit an internal error."); return 0; }
+
     /* 1.08: 1.12 made the model DROP items from lists (Duurn from the seven regions, law VIII), 1.05 let it wander into the other fact lines */
     float rp = getenv("KDR_REPEAT") ? (float)atof(getenv("KDR_REPEAT")) : 1.08f;
-    llama_sampler_chain_add(smpl, llama_sampler_init_penalties(llama_vocab_n_tokens(c->vocab), 128, rp, 0.0f, 0.0f));
-    llama_sampler_chain_add(smpl, llama_sampler_init_greedy());
-
-    struct llama_batch batch = llama_batch_get_one(tok + skip, n - skip);
-    if (llama_decode(c->ctx, batch) != 0) { c->sys_cached = 0; free(tok); llama_sampler_free(smpl); snprintf(out, out_cap, "Sorry, I hit an internal error."); return 0; }
-
-    size_t on = 0; out[0] = 0; int produced = 0;
-    { const char *pf = prefill_for(question); size_t pl = strlen(pf); if (pl && pl + 1 < out_cap) { memcpy(out, pf, pl + 1); on = pl; if (stream) stream(pf, ud); } }
-    char piece[64];
-    for (int i = 0; i < max_new; i++) {
-        llama_token id = llama_sampler_sample(smpl, c->ctx, -1);   /* llama_sampler_sample already accepts the token */
-        if (llama_vocab_is_eog(c->vocab, id)) break;
-        int l = llama_token_to_piece(c->vocab, id, piece, sizeof piece - 1, 0, false);
-        if (l < 0) l = 0; piece[l] = 0;
-        if (on + l + 1 < out_cap) { memcpy(out + on, piece, l); on += l; out[on] = 0; }
-        produced++;
-        if (stream && stream(piece, ud)) break;
-        /* stop if the model starts a new turn on its own */
-        if (on >= 10 && strstr(out + (on > 20 ? on - 20 : 0), "<|im_")) { char *s = strstr(out, "<|im_"); if (s) { *s = 0; on = (size_t)(s - out); } break; }
-        llama_token next = id;
-        batch = llama_batch_get_one(&next, 1);
-        if (llama_decode(c->ctx, batch) != 0) { c->sys_cached = 0; break; }
+    const char *pf = prefill_for(question);
+    /* grounding check: when the reader is confident about a short span, the reply must contain it. The greedy path is fragile
+     * at 0.5B ("lives in Heuvelmeer" vs "lives at Coastburgh Castle"), so such replies are buffered (not streamed), and if the
+     * span is missing we decode once more without the repetition penalty and keep whichever reply is grounded. */
+    int verify = use_facts && !ood && !getenv("KDR_NO_VERIFY") && a && a->confidence >= 0.6f && a->answer[0] && strlen(a->answer) <= 100;
+    int produced = gen_loop(c, rp, max_new, pf, out, out_cap, verify ? NULL : stream, ud);
+    if (verify && !reply_grounded(out, a)) {
+        llama_memory_seq_rm(mem, 0, n - 1, -1);   /* rewind to the prompt; re-decode its last token to get fresh logits */
+        if (llama_decode(c->ctx, llama_batch_get_one(tok + n - 1, 1)) == 0) {
+            char *alt = malloc(out_cap);
+            int p2 = gen_loop(c, rp > 1.0f ? 1.0f : 1.08f, max_new, pf, alt, out_cap, NULL, NULL);
+            if (getenv("KDR_DEBUG_PROMPT")) fprintf(stderr, "[verify] not grounded (reader: %s)\n  A: %s\n  B: %s\n", a->answer, out, alt);
+            if (reply_grounded(alt, a)) { snprintf(out, out_cap, "%s", alt); produced = p2; }
+            free(alt);
+        } else c->sys_cached = 0;
     }
-    /* trim + drop sentences that already appeared (small models sometimes loop) */
-    while (on > 0 && isspace((unsigned char)out[on - 1])) out[--on] = 0;
-    dedupe_sentences(out);
-    llama_sampler_free(smpl); free(tok);
+    if (verify && stream) stream(out, ud);   /* buffered reply goes out in one piece */
+    free(tok);
     if (ms) *ms = now_ms() - t0;
     return produced;
 }
