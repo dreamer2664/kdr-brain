@@ -1,5 +1,7 @@
 # KDR Brain — a < 80 MB neural question-answering brain for Dutch Robloxia
 
+[![build](https://github.com/dreamer2664/kdr-brain/actions/workflows/build.yml/badge.svg)](https://github.com/dreamer2664/kdr-brain/actions) · source: https://github.com/dreamer2664/kdr-brain · built artifacts: https://github.com/dreamer2664/kdr-brain/releases/latest
+
 A fully self-contained neural QA system whose entire knowledge comes from three sites:
 
 | Source | What was crawled |
