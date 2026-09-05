@@ -26,7 +26,7 @@ fi
 for f in brain.kdr kdr-brain kdr-brain-lite composer.gguf; do
   aid=$(echo "$rel" | jget "next((a['id'] for a in d.get('assets',[]) if a['name']=='$f'), '')")
   [ -n "$aid" ] && auth -X DELETE "$API/releases/assets/$aid"
-  echo "uploading $f ($(stat -c %s release/$f) bytes) ..."
+  echo "uploading $f ($(stat -L -c %s release/$f) bytes) ..."
   auth -H "Content-Type: application/octet-stream" --data-binary "@release/$f" \
        "https://uploads.github.com/repos/$GH_OWNER/$GH_REPO/releases/$id/assets?name=$f" \
     | jget '"  ok: %s  %d bytes  %s" % (d["name"], d["size"], d["browser_download_url"])'
