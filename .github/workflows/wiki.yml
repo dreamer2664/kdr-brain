@@ -13,12 +13,19 @@ on:
       dims:
         description: PCA dimensions of the passage embeddings (128 = 27 MB, 192 = 41 MB)
         default: "128"
+  # same job started from a script with a Contents-write token (no Actions scope needed):
+  #   curl -X POST -H "Authorization: Bearer $GH_TOKEN" https://api.github.com/repos/OWNER/kdr-brain/dispatches \
+  #        -d '{"event_type":"wiki-pack","client_payload":{"dims":"128"}}'
+  repository_dispatch:
+    types: [wiki-pack]
 
 permissions:
   contents: write
 
 env:
   PARTS: 16          # embedding parts (4 per runner x 4 runners)
+  ZIM_URL: ${{ github.event.inputs.zim_url || github.event.client_payload.zim_url || 'https://download.kiwix.org/zim/wikipedia/wikipedia_en_top_mini_2026-06.zim' }}
+  DIMS: ${{ github.event.inputs.dims || github.event.client_payload.dims || '128' }}
 
 jobs:
   extract:
@@ -30,7 +37,7 @@ jobs:
           python-version: "3.12"
       - run: pip install libzim
       - name: Download the ZIM
-        run: mkdir -p /tmp/wiki && curl -fL --retry 3 -o /tmp/wiki/dump.zim "${{ github.event.inputs.zim_url }}" && ls -la /tmp/wiki
+        run: mkdir -p /tmp/wiki && curl -fL --retry 3 -o /tmp/wiki/dump.zim "$ZIM_URL" && ls -la /tmp/wiki
       - name: Extract passages
         run: python3 scripts/wiki_extract.py /tmp/wiki/dump.zim /tmp/wiki/ext
       - name: Shuffle articles + split for parallel embedding
@@ -95,7 +102,7 @@ jobs:
           path: /tmp/wiki/ext/emb
           merge-multiple: true
       - name: Pack -> release/wiki.kdw
-        run: ls -la /tmp/wiki/ext/emb && python3 scripts/wiki_pack.py /tmp/wiki/ext release/wiki.kdw --dims ${{ github.event.inputs.dims }} && ls -la release
+        run: ls -la /tmp/wiki/ext/emb && python3 scripts/wiki_pack.py /tmp/wiki/ext release/wiki.kdw --dims $DIMS && ls -la release
       - name: Retrieval + reader check on the general-knowledge set
         run: python3 scripts/eval_wiki.py tests/general.txt --wiki release/wiki.kdw
       - name: Publish rolling release "wiki"
@@ -106,4 +113,4 @@ jobs:
           sleep 3
           gh release create wiki release/wiki.kdw \
             --title "wiki pack ($(date -u +%Y-%m-%d))" \
-            --notes "General-knowledge pack built from ${{ github.event.inputs.zim_url }} (commit ${{ github.sha }}, ${{ github.event.inputs.dims }}-d embeddings). Load with: kdr-brain brain.kdr --chat composer.gguf --wiki wiki.kdw serve 8080"
+            --notes "General-knowledge pack built from $ZIM_URL (commit ${{ github.sha }}, $DIMS-d embeddings). Load with: kdr-brain brain.kdr --chat composer.gguf --wiki wiki.kdw serve 8080"
