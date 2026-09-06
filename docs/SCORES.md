@@ -9,6 +9,7 @@ How the brain is graded, what it scores today, and what was tried. All numbers c
 |---|---|---|
 | `tests/kingdom.txt` | 70 (7 blocks of 10) | deep, specific kingdom questions: crown & family, government & ministers, regions & places, Vaderveen & Goudhof Enterprises, military, laws/songs/culture/diplomacy, vehicles/games/misc |
 | `tests/chat.txt` | 40 (4 blocks of 10) | greetings & small talk, arithmetic & logic, instructions (bullet lists, "answer with just the name", translate, repeat), general knowledge outside the kingdom (must answer *and* flag, never refuse) |
+| `tests/general.txt` | 50 (5 blocks of 10) | general knowledge answered from the Wikipedia pack: geography, science & nature, history, people & culture, everyday knowledge. Scored only when `release/wiki.kdw` exists; gate ≥ 7/10 per block (the mini dump does not contain every article) |
 
 One line = `question | accepted phrase 1 ; accepted phrase 2 ; !norefuse ; !short`. A reply passes when it contains
 any accepted phrase (case-insensitive), `!norefuse` fails refusals, `!short` fails replies over 40 words.
@@ -71,10 +72,51 @@ TOTAL 109/110   avg 2.8 s per reply (2 vCPU)
     engine rewinds the KV cache to the prompt and decodes once more with a different repetition penalty, keeping the
     grounded reply. Costs ~1 s only in the rare miss case; such replies are buffered instead of streamed.
 
+## General knowledge (Wikipedia pack)
+
+Pipeline for a non-kingdom question: dense (PCA-128 int8) + BM25 retrieval over the wiki pack → top 8 passages
+(≤ 2 per article) → the SQuAD2 reader reads each passage **separately**, prefixed with its title → candidate score =
+reader margin + 12·(retrieval score − top score) + 15·(question-term coverage − 1) + 3 if the answer is the article's
+own subject + 0.5·(margins of other passages that extracted the same answer). If no candidate has a positive margin,
+each passage's best sentence is re-read alone. Winner ≥ 0.45 confidence → composer prompt with ≤ 3 Wikipedia facts.
+
+Development pack = every article embedded so far (15,174 articles / 65,256 passages, 30% of the dump) plus the articles the
+test questions need. Retrieval + reader alone (`eval_wiki.py`): **48/50**; whole pipeline with the composer:
+
+```
+== general.txt   (15k-article pack)
+   9/10  Geography             smallest country → Vatican City is right now; it was 9/10 before the sentence re-read
+   9/10  Science & nature      "largest organ" → the Bone article's "femur" (the Skin intro never says "largest organ")
+  10/10  History
+  10/10  People & culture
+   8/10  Everyday knowledge    guacamole (no Avocado article in the pack yet), "most native speakers" (no list article)
+```
+
+What moved the general-knowledge numbers (each verified on the same 50 questions):
+
+| change | retrieval+reader score |
+|---|---|
+| one concatenated read of the top hits (as for the kingdom) | 11/50 – the first passage dominates |
+| per-passage reads, best margin | 31/50 |
+| + "Title: " prefix on every passage (intros say "He was born…" without the name) | 38/50 |
+| + question-term coverage penalty (idf-weighted) | 42/50 |
+| + answer voting across passages | 45/50 |
+| + retrieval weight 12, article-subject bonus 3, sentence re-read when all margins ≤ 0 | 48/50 |
+| dims 128 vs 192 vs 384 | identical – 128 kept (27 MB instead of 41/82) |
+
+Composer-side fixes: at most 3 Wikipedia facts (200 chars each, winner first) — six long facts made the 0.5B model
+restate "the Wikipedia fact states…" or copy the article lead; grounding check at 0.5 for wiki answers; a third,
+"focused" decode (winning passage + span only) when both regular decodes miss the span ("leap year" → "366 days").
+Routing fixes so the kingdom stays intact: ordinary English title words (country, army, standard, company…) are not
+entities; the kingdom index wins only with a clear reader margin (> 8) or when its passage title is in the question
+("What is the Royal Bank?" stays in the kingdom instead of Royal Bank of Scotland); kingdom.txt 70/70 and chat.txt
+39/40 with the wiki pack loaded (the miss is "spider legs" – the Spider article is not in the 30% dev pack yet).
+
 ## Known misses / not fixable at this size
 
-* General knowledge is the model's own: "6 continents", "orange" for blue+yellow. Flagged, not fixed
-  (a bigger model or a small general-facts index would be the next step).
+* General knowledge outside the Wikipedia pack is the model's own: "6 continents", "orange" for blue+yellow.
+  Flagged "(not from the wikis)", not fixed. The pack holds article introductions only; a fact that lives deep in an
+  article body (or in an article outside the 50k most-read) is not there.
 * Answers that need every item of a long list are only as good as the single passage that holds the list;
   when a vague "overview" passage outranks it the model paraphrases the overview instead (fixed case by case by
   putting the list into the overview passage).

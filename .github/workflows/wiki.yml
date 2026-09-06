@@ -1,6 +1,7 @@
 # Builds the general-knowledge pack (release/wiki.kdw) from a Kiwix Wikipedia ZIM and attaches it to the rolling
-# release "wiki" (separate from "latest", which the build workflow recreates on every push).
-# Manual trigger only: it takes ~1.5 h on the free 4-vCPU runner (embedding 215k passages with the C engine).
+# release "wiki" (separate from "latest", which the build workflow recreates on every push and which then picks the pack up).
+# Manual trigger only: embedding 215k passages with the C engine takes ~2 CPU-hours, so the work is split over
+# 4 parallel runners (about 40 minutes wall-clock). Free on public repositories.
 name: wiki-pack
 
 on:
@@ -16,47 +17,87 @@ on:
 permissions:
   contents: write
 
+env:
+  PARTS: 16          # embedding parts (4 per runner x 4 runners)
+
 jobs:
-  wiki:
+  extract:
     runs-on: ubuntu-latest
-    timeout-minutes: 340
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install numpy libzim zstandard
+      - run: pip install libzim
+      - name: Download the ZIM
+        run: mkdir -p /tmp/wiki && curl -fL --retry 3 -o /tmp/wiki/dump.zim "${{ github.event.inputs.zim_url }}" && ls -la /tmp/wiki
+      - name: Extract passages
+        run: python3 scripts/wiki_extract.py /tmp/wiki/dump.zim /tmp/wiki/ext
+      - name: Shuffle articles + split for parallel embedding
+        run: python3 scripts/wiki_prepare.py /tmp/wiki/ext $PARTS && ls -la /tmp/wiki/ext
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wiki-ext
+          path: |
+            /tmp/wiki/ext/shuffled_articles.tsv
+            /tmp/wiki/ext/shuffled_passages.tsv
+            /tmp/wiki/ext/embed_part_*
+          retention-days: 3
 
+  embed:
+    needs: extract
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        k: [0, 1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get install -y libzstd-dev
       - name: Fetch the current brain.kdr (same retriever weights as the shipped engine)
         run: |
           mkdir -p release
           curl -fL --retry 3 -o release/brain.kdr https://github.com/${{ github.repository }}/releases/latest/download/brain.kdr
-          ls -la release
+      - name: Compile the chat-less engine
+        run: make lite
+      - uses: actions/download-artifact@v4
+        with:
+          name: wiki-ext
+          path: /tmp/wiki/ext
+      - name: Embed parts ${{ matrix.k }}*4 .. +4 (4 single-threaded processes)
+        run: sh scripts/wiki_embed_local.sh /tmp/wiki/ext $PARTS $(( 4 * ${{ matrix.k }} )) 4 && ls -la /tmp/wiki/ext/emb
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wiki-emb-${{ matrix.k }}
+          path: /tmp/wiki/ext/emb/part_*.f32
+          retention-days: 3
 
-      - name: Compile the chat-less engine (embedding + tokenizer + wiki reader)
-        run: make lite && ls -la release
-
-      - name: Download the ZIM
+  pack:
+    needs: embed
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install numpy zstandard && sudo apt-get install -y libzstd-dev
+      - name: Fetch brain.kdr + compile the engine
         run: |
-          mkdir -p /tmp/wiki
-          curl -fL --retry 3 -o /tmp/wiki/dump.zim "${{ github.event.inputs.zim_url }}"
-          ls -la /tmp/wiki
-
-      - name: Extract passages
-        run: python3 scripts/wiki_extract.py /tmp/wiki/dump.zim /tmp/wiki/ext
-
-      - name: Shuffle articles + split for parallel embedding
-        run: python3 scripts/wiki_prepare.py /tmp/wiki/ext 4
-
-      - name: Embed all passages with the C engine (4 processes)
-        run: sh scripts/wiki_embed_local.sh /tmp/wiki/ext 4
-
+          mkdir -p release
+          curl -fL --retry 3 -o release/brain.kdr https://github.com/${{ github.repository }}/releases/latest/download/brain.kdr
+          make lite
+      - uses: actions/download-artifact@v4
+        with:
+          name: wiki-ext
+          path: /tmp/wiki/ext
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wiki-emb-*
+          path: /tmp/wiki/ext/emb
+          merge-multiple: true
       - name: Pack -> release/wiki.kdw
-        run: python3 scripts/wiki_pack.py /tmp/wiki/ext release/wiki.kdw --dims ${{ github.event.inputs.dims }} && ls -la release
-
-      - name: Retrieval+reader check on the general-knowledge set
+        run: ls -la /tmp/wiki/ext/emb && python3 scripts/wiki_pack.py /tmp/wiki/ext release/wiki.kdw --dims ${{ github.event.inputs.dims }} && ls -la release
+      - name: Retrieval + reader check on the general-knowledge set
         run: python3 scripts/eval_wiki.py tests/general.txt --wiki release/wiki.kdw
-
       - name: Publish rolling release "wiki"
         env:
           GH_TOKEN: ${{ github.token }}
@@ -65,4 +106,4 @@ jobs:
           sleep 3
           gh release create wiki release/wiki.kdw \
             --title "wiki pack ($(date -u +%Y-%m-%d))" \
-            --notes "General-knowledge pack built from ${{ github.event.inputs.zim_url }} (commit ${{ github.sha }}). Load with: kdr-brain brain.kdr --chat composer.gguf --wiki wiki.kdw serve 8080"
+            --notes "General-knowledge pack built from ${{ github.event.inputs.zim_url }} (commit ${{ github.sha }}, ${{ github.event.inputs.dims }}-d embeddings). Load with: kdr-brain brain.kdr --chat composer.gguf --wiki wiki.kdw serve 8080"

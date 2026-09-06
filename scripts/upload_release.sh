@@ -13,6 +13,7 @@ auth() { curl -sS -H "Authorization: Bearer $GH_TOKEN" -H "X-GitHub-Api-Version:
 jget() { python3 -c 'import sys,json; d=json.load(sys.stdin); print(eval(sys.argv[1], {"d": d}))' "$1"; }
 
 for f in brain.kdr kdr-brain kdr-brain-lite composer.gguf; do [ -s "release/$f" ] || { echo "release/$f missing - run make / pack.py first"; exit 1; }; done
+ASSETS="brain.kdr kdr-brain kdr-brain-lite composer.gguf"; [ -s release/wiki.kdw ] && ASSETS="$ASSETS wiki.kdw"
 code=$(auth -o /dev/null -w '%{http_code}' "$API")
 [ "$code" = 200 ] || { echo "ERROR $code: token invalid/expired (401) or repo $GH_OWNER/$GH_REPO not accessible (404)"; exit 1; }
 
@@ -23,7 +24,7 @@ if [ -z "$id" ]; then
   rel=$(auth -X POST "$API/releases" -d "{\"tag_name\":\"$TAG\",\"name\":\"kdr-brain $TAG\",\"body\":\"Uploaded from the sandbox on $(date -u +%F). Assets: brain.kdr (retriever+reader+knowledge), kdr-brain (static Linux x86-64 binary with chat), kdr-brain-lite (extractive only), composer.gguf (Qwen2.5-0.5B-Instruct Q4_K_M).\"}")
   id=$(echo "$rel" | jget 'd["id"]')
 fi
-for f in brain.kdr kdr-brain kdr-brain-lite composer.gguf; do
+for f in $ASSETS; do
   aid=$(echo "$rel" | jget "next((a['id'] for a in d.get('assets',[]) if a['name']=='$f'), '')")
   [ -n "$aid" ] && auth -X DELETE "$API/releases/assets/$aid"
   echo "uploading $f ($(stat -L -c %s release/$f) bytes) ..."

@@ -107,6 +107,15 @@ Everything is already prepared in this workspace and dry-run tested; the only mi
    ./release/kdr-brain release/brain.kdr --chat release/composer.gguf serve 8080
    ```
 
+5. **The Wikipedia pack** (`release/wiki.kdw`, ~80 MB) has its own workflow, `.github/workflows/wiki.yml`, because
+   embedding 215k passages takes ~1.5 h even on the 4-core runner: it is started by hand (*Actions → wiki-pack →
+   Run workflow*; the ZIM URL and the embedding dims are inputs) or by me with the token
+   (`POST /repos/<you>/kdr-brain/actions/workflows/wiki.yml/dispatches`). It downloads the Kiwix ZIM, extracts,
+   embeds and packs, runs `eval_wiki.py`, and publishes the pack to a separate rolling release `wiki`. The normal
+   build then picks that file up from there (`releases/download/wiki/wiki.kdw`), scores `tests/general.txt` with it
+   and ships it in `latest` too. No pack → the build simply skips the general-knowledge set, nothing breaks.
+   `restore.sh` downloads `wiki.kdw` when it exists (`KDR_NO_WIKI=1` to skip it).
+
 ### Day-to-day from then on
 * You ask for a change → I edit, rebuild, test locally, `git commit`, push. ~1 minute of my time, 0 of yours.
 * Re-crawl when the wikis change: `python3 scripts/crawl.py` → re-extract → push → CI rebuilds the brain.
