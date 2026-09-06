@@ -120,7 +120,18 @@ static int needs_context(const char *q) {
         else if (wl) { w[wl] = 0; words++; for (int i = 0; pron[i]; i++) if (strcmp(w, pron[i]) == 0) hit = 1; wl = 0; }
         if (!*p) break;
     }
-    return hit || words <= 5;
+    if (hit) return 1;
+    /* a short question that names a capitalised thing of its own ("What's the population of Tokyo?") is complete;
+     * only really bare ones ("and the queen?", "capital?") borrow the previous turn's entities */
+    if (words <= 5) {
+        int caps = 0, first = 1;
+        for (const char *p = q; *p; p++) {
+            if (isalnum((unsigned char)*p)) { if (!first && isupper((unsigned char)*p) && (p == q || !isalnum((unsigned char)p[-1]))) caps++; first = 0; }
+            else if (*p == ' ') first = 0;
+        }
+        return caps == 0;
+    }
+    return 0;
 }
 /* set of words that occur in passage titles (lowercased): the kingdom's entity vocabulary */
 static char **g_ent = NULL; static int g_n_ent = 0;
@@ -282,7 +293,14 @@ static int route(Brain *b, const char *q, const ChatTurn *turns, int nh, Answer 
     int ent = has_entity(rq), tier = smalltalk_tier(q);
     if (tier == 1 || (tier == 2 && !ent) || chat_is_live_question(q)) return ROUTE_CHAT;
     /* a short follow-up ("why that one?", "really?") right after an opinion/small-talk turn stays in chat mode */
-    if (nh >= 2 && !has_entity(q) && strlen(q) < 40 && smalltalk_tier(turns[nh - 2].text) == 1) return ROUTE_CHAT;
+    /* ...but only for reactions ("why?", "really?", "how come", "and yours?"), not for a fresh question that happens to be
+     * short ("What's the population of Tokyo?" after an opinion turn must still reach the indexes) */
+    if (nh >= 2 && !has_entity(q) && strlen(q) < 40 && smalltalk_tier(turns[nh - 2].text) == 1) {
+        static const char *react[] = { "why", "really", "how come", "and you", "and yours", "same", "me too", "cool", "nice", "ok", "okay", "lol", "haha", "seriously", "sure", "no way", "wow", "what about you", NULL };
+        char lq[64]; size_t i = 0; for (; q[i] && i < sizeof lq - 1; i++) lq[i] = (char)tolower((unsigned char)q[i]); lq[i] = 0;
+        for (int k = 0; react[k]; k++) if (strncmp(lq, react[k], strlen(react[k])) == 0) return ROUTE_CHAT;
+        if (strlen(q) < 12) return ROUTE_CHAT;
+    }
     if (is_arithmetic(q)) return ROUTE_OOD;
     /* No kingdom entity word in the question: both indexes are consulted. The kingdom wins when its reader is confident
      * and prefers a span over "no answer" (Firewood Forest, Koninklijke Marechaussee - proper names the title list misses);
