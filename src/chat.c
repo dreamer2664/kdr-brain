@@ -88,7 +88,7 @@ static int pick_mode(const char *q) {
     char n[2100]; size_t o = 1; n[0] = ' ';
     for (const char *p = q; *p && o < sizeof n - 2; p++) { unsigned char c = (unsigned char)*p; n[o++] = isalnum(c) ? (char)tolower(c) : ' '; }
     n[o++] = ' '; n[o] = 0;
-    static const char *live[] = { " weather ", " temperature ", " raining ", " snowing ", " forecast ", " time is it ", " what time ", " today s date ", " what day is ", " who is online ", " who s online ", " anyone online ", " latest news ", " any news ", " the news ", NULL };
+    static const char *live[] = { " weather ", " temperature today ", " temperature outside ", " temperature right now ", " temperature in ", " raining ", " snowing ", " forecast ", " time is it ", " what time ", " today s date ", " what day is ", " who is online ", " who s online ", " anyone online ", " latest news ", " any news ", " the news ", NULL };
     static const char *age[]  = { " how old ", " age of ", " s age ", NULL };
     static const char *bored[] = { " bored ", " boring ", " nothing to do ", NULL };
     /* "do you like the king?", "what do you think of the queen?": asked for an opinion about a kingdom person/thing */
@@ -133,14 +133,20 @@ static int adds_nothing(const char *t, const char **seen, int ns) {
 
 /* does the reply carry the reader's answer? (>= 70% of its content words). Only meaningful for confident, short spans. */
 static int reply_grounded(const char *reply, const Answer *a) {
-    if (!a || a->confidence < 0.6f || !a->answer[0] || strlen(a->answer) > 100 || strcasecmp(a->answer, "Dutch Robloxia") == 0) return 1;
+    if (!a || a->confidence < (a->kind == 1 ? 0.5f : 0.6f) || !a->answer[0] || strlen(a->answer) > 100 || strcasecmp(a->answer, "Dutch Robloxia") == 0) return 1;
     char w[40][24]; int n = content_words(a->answer, w, 40); if (n == 0) return 1;
     char v[400][24]; int m = content_words(reply, v, 400), found = 0;
     for (int i = 0; i < n; i++) for (int k = 0; k < m; k++) if (strcmp(w[i], v[k]) == 0) { found++; break; }
     return found * 10 >= n * 7;
 }
 
+static void build_prompt_ex(Buf *p, const Brain *b, const Answer *a, int ood, const char *q, const ChatTurn *hist, int nh, int use_facts, int focus);
 static void build_prompt(Buf *p, const Brain *b, const Answer *a, int ood, const char *q, const ChatTurn *hist, int nh, int use_facts) {
+    build_prompt_ex(p, b, a, ood, q, hist, nh, use_facts, 0);
+}
+/* focus = 1: last-resort prompt for a Wikipedia answer the composer failed to ground twice - only the winning passage and the
+ * reader's span, stated right next to the question (a 0.5B model copies what sits closest to the question) */
+static void build_prompt_ex(Buf *p, const Brain *b, const Answer *a, int ood, const char *q, const ChatTurn *hist, int nh, int use_facts, int focus) {
     bput(p, "<|im_start|>system\n"); bput(p, SYSTEM);
     bput(p, "<|im_end|>\n");
     for (int i = 0; i < nh; i++) {
@@ -148,27 +154,33 @@ static void build_prompt(Buf *p, const Brain *b, const Answer *a, int ood, const
         bput(p, hist[i].text); bput(p, "<|im_end|>\n");
     }
     bput(p, "<|im_start|>user\n");
+    if (use_facts && focus) {
+        bput(p, "FACT (from Wikipedia, article '"); bput(p, a->title); bput(p, "'):\n"); bput(p, a->sentence); bput(p, "\n\nQUESTION: "); bput(p, q);
+        bput(p, "\n(The answer is: "); bput(p, a->answer); bput(p, ". Say exactly that in one plain sentence that repeats the question's subject, nothing else.)");
+        bput(p, "<|im_end|>\n<|im_start|>assistant\n");
+        return;
+    }
     if (use_facts) {
         /* the extractive reader's span first: a 0.5B model copies FACTS fragments otherwise (e.g. "Royal Navy: First Lieutenant") */
         if (a->confidence >= 0.45f && a->answer[0] && strlen(a->answer) < 160 && strcasecmp(a->answer, "Dutch Robloxia") != 0) {
             char span[164]; snprintf(span, sizeof span, "%s", a->answer);
             char *dot = strstr(span, ". "); if (dot && dot - span > 12) *dot = 0;   /* first sentence of the span is enough */
             bput(p, "(The wiki reader suggests the answer is: "); bput(p, span); bput(p, ")\n"); }
-        bput(p, "FACTS:\n");
+        bput(p, a->kind == 1 ? "FACTS (from Wikipedia, not about the kingdom):\n" : "FACTS:\n");
         const char *seen[16]; int ns = 0, nf = 0;
         if (a->confidence >= 0.3f && a->sentence[0]) { bput(p, "- ["); bput(p, a->title); bput(p, "] "); bput(p, a->sentence); bput(p, "\n"); seen[ns++] = a->sentence; nf++; }
         for (int i = 0; i < a->n_hits && i < 8; i++) {
-            const char *t = brain_passage_text(b, a->hits[i].passage); int dup = 0, same_shape = 0;
+            const char *t = a->hit_text[i] ? a->hit_text[i] : ""; int dup = 0, same_shape = 0;
             for (int j = 0; j < ns; j++) { if (strcmp(seen[j], t) == 0) { dup = 1; break; } if (strncmp(seen[j], t, 20) == 0) same_shape++; }
             if (dup || same_shape >= 2) continue;   /* at most two rows of the same table ("Military rank level N of 15: ...") - they drown the answer */
             if (adds_nothing(t, seen, ns)) continue;
             if (ns < 16) seen[ns++] = t;
-            bput(p, "- ["); bput(p, brain_passage_title(b, a->hits[i].passage)); bput(p, "] ");
+            bput(p, "- ["); bput(p, a->hit_title[i] ? a->hit_title[i] : ""); bput(p, "] ");
             /* the top hit (usually the passage that holds the answer) may be a long list: keep it whole; the rest is trimmed */
-            size_t lim = i == 0 ? 600 : 240;
+            size_t lim = i == 0 ? 600 : (a->kind == 1 ? 200 : 240);
             if (strlen(t) > lim) { char cut[640]; memcpy(cut, t, lim); cut[lim] = 0; char *sp = strrchr(cut, ' '); if (sp && sp > cut + lim / 2) *sp = 0; bput(p, cut); bput(p, " ..."); } else bput(p, t);
             bput(p, "\n");
-            if (++nf >= 6) break;
+            if (++nf >= (a->kind == 1 ? 3 : 6)) break;
         }
         bput(p, "\nQUESTION: ");
     }
@@ -178,6 +190,7 @@ static void build_prompt(Buf *p, const Brain *b, const Answer *a, int ood, const
       if (qmarks >= 2 && mode == MODE_NORMAL && use_facts) bput(p, "\n(Two questions - answer both, in order.)"); }
     /* general-knowledge question: without this nudge the model drags the kingdom into it ("leap years are not real in the kingdom") */
     if (ood && mode == MODE_NORMAL) bput(p, "\n(This is not about the kingdom: answer it from general knowledge, briefly and accurately, without mentioning the kingdom.)");
+    if (use_facts && a->kind == 1 && mode == MODE_NORMAL) bput(p, "\n(This is a general-knowledge question, not about the kingdom: answer it in one or two plain sentences using the Wikipedia facts above. Do not say 'the Wikipedia fact states'.)");
     if (mode == MODE_AGE) bput(p, "\n(Use only the birth date or age written in the facts; if only a birth year is given, say 'born in <year>'.)");
     if (mode == MODE_BORED) bput(p, "\n(Recommend one of the kingdom's Roblox games by name and suggest one question I could ask you about the kingdom.)");
     if (mode == MODE_LIVE) bput(p, "\n(You cannot see live information like weather, time or news - say so in one friendly sentence and offer a kingdom fact instead. Do not invent any.)");
@@ -292,7 +305,7 @@ int chat_reply(Chat *c, const Brain *b, const Answer *a, int ood, const char *qu
     /* grounding check: when the reader is confident about a short span, the reply must contain it. The greedy path is fragile
      * at 0.5B ("lives in Heuvelmeer" vs "lives at Coastburgh Castle"), so such replies are buffered (not streamed), and if the
      * span is missing we decode once more without the repetition penalty and keep whichever reply is grounded. */
-    int verify = use_facts && !ood && !getenv("KDR_NO_VERIFY") && a && a->confidence >= 0.6f && a->answer[0] && strlen(a->answer) <= 100;
+    int verify = use_facts && !ood && !getenv("KDR_NO_VERIFY") && a && a->confidence >= (a->kind == 1 ? 0.5f : 0.6f) && a->answer[0] && strlen(a->answer) <= 100;
     int produced = gen_loop(c, rp, max_new, pf, out, out_cap, verify ? NULL : stream, ud);
     if (verify && !reply_grounded(out, a)) {
         llama_memory_seq_rm(mem, 0, n - 1, -1);   /* rewind to the prompt; re-decode its last token to get fresh logits */
@@ -301,6 +314,20 @@ int chat_reply(Chat *c, const Brain *b, const Answer *a, int ood, const char *qu
             int p2 = gen_loop(c, rp > 1.0f ? 1.0f : 1.08f, max_new, pf, alt, out_cap, NULL, NULL);
             if (getenv("KDR_DEBUG_PROMPT")) fprintf(stderr, "[verify] not grounded (reader: %s)\n  A: %s\n  B: %s\n", a->answer, out, alt);
             if (reply_grounded(alt, a)) { snprintf(out, out_cap, "%s", alt); produced = p2; }
+            else if (a->kind == 1 && a->confidence >= 0.6f) {
+                /* Wikipedia answer, still not grounded: focused prompt with the winning passage + span next to the question */
+                Buf fp = {0}; build_prompt_ex(&fp, b, a, ood, question, NULL, 0, use_facts, 1);
+                int n3 = llama_tokenize(c->vocab, fp.s, (int)fp.n, tok, max_tok, true, true); free(fp.s);
+                int skip3 = (c->sys_cached && n3 > c->n_sys && memcmp(tok, c->sys_tok, sizeof(llama_token) * c->n_sys) == 0) ? c->n_sys : 0;
+                if (skip3) llama_memory_seq_rm(mem, 0, c->n_sys, -1); else { llama_memory_clear(mem, true); c->sys_cached = 0; }
+                if (n3 > 0 && llama_decode(c->ctx, llama_batch_get_one(tok + skip3, n3 - skip3)) == 0) {
+                    int p3 = gen_loop(c, 1.08f, 80, "", alt, out_cap, NULL, NULL);
+                    if (getenv("KDR_DEBUG_PROMPT")) fprintf(stderr, "  C: %s\n", alt);
+                    if (reply_grounded(alt, a)) { snprintf(out, out_cap, "%s", alt); produced = p3; }
+                    else snprintf(out, out_cap, "%s (Wikipedia, %s)", a->answer, a->title);   /* deterministic last resort */
+                } else c->sys_cached = 0;
+                n = n3;
+            }
             free(alt);
         } else c->sys_cached = 0;
     }

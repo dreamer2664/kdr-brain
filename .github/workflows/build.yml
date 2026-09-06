@@ -60,17 +60,23 @@ jobs:
             https://huggingface.co/bartowski/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/Qwen2.5-0.5B-Instruct-Q4_K_M.gguf
           ls -la release
 
-      - name: Size gate (brain + engine < 80 MB, everything incl. composer < 500 MB)
+      - name: Fetch the general-knowledge pack from the "wiki" release (built by the wiki-pack workflow; optional)
+        run: |
+          curl -fL --retry 3 -o release/wiki.kdw https://github.com/${{ github.repository }}/releases/download/wiki/wiki.kdw || rm -f release/wiki.kdw
+          ls -la release
+
+      - name: Size gate (brain + engine < 80 MB, wiki pack < 120 MB, everything < 600 MB)
         run: |
           core=$(( $(stat -c %s release/brain.kdr) + $(stat -c %s release/kdr-brain) ))
-          total=$(( core + $(stat -c %s release/composer.gguf) ))
-          echo "brain.kdr + kdr-brain = $core bytes; with composer = $total bytes"
-          test "$core" -lt 80000000 && test "$total" -lt 500000000
+          wiki=$(stat -c %s release/wiki.kdw 2>/dev/null || echo 0)
+          total=$(( core + wiki + $(stat -c %s release/composer.gguf) ))
+          echo "brain.kdr + kdr-brain = $core bytes; wiki.kdw = $wiki bytes; with composer = $total bytes"
+          test "$core" -lt 80000000 && test "$wiki" -lt 120000000 && test "$total" -lt 600000000
 
       - name: Quality gate 1 - extractive reader (75 questions, >= 72 exact)
         run: python3 scripts/eval_c.py --strict
 
-      - name: Quality gate 2 - chat scores (every block >= 9/10; GitHub runners have 4 vCPUs)
+      - name: Quality gate 2 - chat scores (kingdom + chat blocks >= 9/10, general-knowledge blocks >= 7/10 when wiki.kdw is present)
         run: KDR_THREADS=4 python3 scripts/score.py --strict
 
       - name: Also build the chat-less 1.5 MB engine (works with brain.kdr alone)
@@ -82,6 +88,6 @@ jobs:
         run: |
           gh release delete latest -y --cleanup-tag || true
           sleep 3
-          gh release create latest release/brain.kdr release/kdr-brain release/kdr-brain-lite release/composer.gguf \
+          gh release create latest release/brain.kdr release/kdr-brain release/kdr-brain-lite release/composer.gguf $( [ -s release/wiki.kdw ] && echo release/wiki.kdw ) \
             --title "kdr-brain build #${{ github.run_number }}" \
-            --notes "Built from commit ${{ github.sha }} on $(date -u +%Y-%m-%d). Assets: brain.kdr (retriever+reader+knowledge, 58 MB), kdr-brain (static Linux x86-64 binary with chat, 8 MB), kdr-brain-lite (extractive-only binary, 1.5 MB), composer.gguf (Qwen2.5-0.5B-Instruct Q4_K_M, 398 MB). Restore with: KDR_REPO=owner/kdr-brain sh scripts/restore.sh"
+            --notes "Built from commit ${{ github.sha }} on $(date -u +%Y-%m-%d). Assets: brain.kdr (retriever+reader+kingdom knowledge, 58 MB), kdr-brain (static Linux x86-64 binary with chat, 8 MB), kdr-brain-lite (extractive-only binary, 1.5 MB), composer.gguf (Qwen2.5-0.5B-Instruct Q4_K_M, 398 MB), wiki.kdw (general-knowledge pack from Wikipedia, when the wiki-pack workflow has run). Restore with: KDR_REPO=owner/kdr-brain sh scripts/restore.sh"

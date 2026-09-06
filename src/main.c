@@ -7,6 +7,7 @@
 #define _GNU_SOURCE
 #include <stdio.h>
 #include "brain.h"
+#include "wiki.h"
 #ifndef KDR_NO_CHAT
 #include "chat.h"
 #else
@@ -33,6 +34,7 @@ static int chat_reply(Chat *c, const Brain *b, const Answer *a, int ood, const c
 #include <time.h>
 
 static Chat *g_chat = NULL;   /* optional composer (GGUF chat model) */
+static Wiki *g_wiki = NULL;   /* optional general-knowledge pack (wiki.kdw) */
 static int g_history_max = 6;  /* previous turns fed back to the composer */
 extern const char kdr_index_html[];   /* web UI, embedded at build time (webui.c) */
 extern const unsigned int kdr_index_html_len;
@@ -55,13 +57,13 @@ static void write_answer_json(FILE *f, Brain *b, const Answer *a, const char *q)
     fputs(",\"source\":", f); json_escape(f, a->source);
     fprintf(f, ",\"confidence\":%.3f,\"span_score\":%.2f,\"null_score\":%.2f,\"ms_retrieve\":%.1f,\"ms_read\":%.1f,\"hits\":[",
             a->confidence, a->span_score, a->null_score, a->ms_retrieve, a->ms_read);
+    (void)b;
     for (int i = 0; i < a->n_hits && i < 8; i++) {
-        int p = a->hits[i].passage;
         fprintf(f, "%s{\"score\":%.3f,\"dense\":%.3f,\"lexical\":%.2f,\"title\":", i ? "," : "", a->hits[i].score, a->hits[i].dense, a->hits[i].lexical);
-        json_escape(f, brain_passage_title(b, p)); fputs(",\"text\":", f); json_escape(f, brain_passage_text(b, p));
-        fputs(",\"url\":", f); json_escape(f, brain_passage_url(b, p)); fputs(",\"source\":", f); json_escape(f, brain_passage_source(b, p)); fputc('}', f);
+        json_escape(f, a->hit_title[i] ? a->hit_title[i] : ""); fputs(",\"text\":", f); json_escape(f, a->hit_text[i] ? a->hit_text[i] : "");
+        fputs(",\"url\":", f); json_escape(f, a->hit_url[i] ? a->hit_url[i] : ""); fputs(",\"source\":", f); json_escape(f, a->hit_source[i] ? a->hit_source[i] : ""); fputc('}', f);
     }
-    fputs("]}", f);
+    fprintf(f, "],\"kind\":\"%s\"}", a->kind == 1 ? "wikipedia" : "kingdom");
 }
 
 
@@ -133,7 +135,14 @@ static void build_entities(const Brain *b) {
             size_t l = (size_t)(t - st); if (l < 3 || l > 40) continue;
             char w[48]; for (size_t k = 0; k < l; k++) w[k] = (char)tolower((unsigned char)st[k]); w[l] = 0;
             static const char *skip[] = { "the","and","for","von","van","der","und","his","every","page","wiki","site","footer","image","caption","how","works","notable","official","poster","propaganda",
-                                          "france","germany","siberia","netherlands","london", NULL };   /* real-world names in game titles are not kingdom entities */
+                                          "france","germany","siberia","netherlands","london",   /* real-world names in game titles are not kingdom entities */
+                                          /* ordinary English words that happen to occur in passage titles: they must not drag general questions
+                                           * ("which metal is liquid at room temperature", "smallest country") into the kingdom index */
+                                          "country","island","government","culture","science","education","finance","housing","defence","defense","military","army","navy","air","police",
+                                          "laws","law","games","game","train","station","palace","castle","home","bank","royal","national","history","economy","politics","migration","affairs",
+                                          "social","foreign","health","healthcare","ministry","minister","ministers","cabinet","parliament","constitution","citizens","citizen","region","regions",
+                                          "city","capital","kingdom","king","queen","prince","princess","emperor","empire","republic","state","states","nation","people","language","anthem","flag","motto",
+                                          "standard","battle","war","wars","peace","luxury","forest","express","lines","enterprises","company","companies","group","history","timeline","overview","list","map","guide","rules","ranks","commands", NULL };
             int sk = 0; for (int j = 0; skip[j]; j++) if (strcmp(w, skip[j]) == 0) { sk = 1; break; }
             if (sk) continue;
             char *key = w; if (bsearch(&key, g_ent, g_n_ent, sizeof(char *), ent_cmp)) continue;
@@ -173,14 +182,47 @@ static void build_retrieval_query(const char *q, const ChatTurn *turns, int nh, 
 
 
 /* ---- routing: does this message need the knowledge base, or is it small talk? ---- */
+/* "the king", "our navy", "the eight laws": kingdom-life words that are ordinary English too. They count as an entity unless the
+ * question clearly points at the real world ("the king of Spain", "the world's largest army"). */
+static int world_cue(const char *q) {
+    static const char *cue[] = { " world ", " earth ", " europe ", " asia ", " africa ", " america ", " country ", " countries ", " planet ", " history ", " real life ", " real world ",
+        " france ", " spain ", " england ", " britain ", " uk ", " usa ", " united states ", " germany ", " italy ", " japan ", " china ", " india ", " russia ", " netherlands ", " belgium ",
+        " roman ", " british ", " french ", " german ", " dutch republic ", " ancient ", " medieval ", " century ", " bc ", " ad ", NULL };
+    char n[2100]; size_t o = 1; n[0] = ' ';
+    for (const char *p = q; *p && o < sizeof n - 2; p++) { unsigned char c = (unsigned char)*p; n[o++] = isalnum(c) ? (char)tolower(c) : ' '; }
+    n[o++] = ' '; n[o] = 0;
+    for (int i = 0; cue[i]; i++) if (strstr(n, cue[i])) return 1;
+    return 0;
+}
+/* a capitalised word (not sentence-initial) that is not a kingdom entity but is a Wikipedia article title ("Australia", "Spain",
+ * "Beethoven") marks a real-world question */
+static int foreign_proper_noun(const char *q) {
+    if (!g_wiki) return 0;
+    const char *p = q; int first = 1;
+    while (*p) {
+        while (*p && !isalnum((unsigned char)*p)) { if (*p == '.' || *p == '?' || *p == '!') first = 1; p++; }
+        const char *st = p; while (*p && (isalnum((unsigned char)*p) || *p == '\'' || *p == '-')) p++;
+        size_t l = (size_t)(p - st); if (!l) continue;
+        int cap = isupper((unsigned char)*st) && l >= 3; int was_first = first; first = 0;
+        if (!cap || was_first) continue;
+        char w[64]; if (l >= sizeof w) continue; memcpy(w, st, l); w[l] = 0;
+        char *ap = strstr(w, "'s"); if (ap && !ap[2]) *ap = 0;
+        if (is_entity_word(w)) continue;
+        if (wiki_has_title(g_wiki, w)) return 1;
+    }
+    return 0;
+}
 static int has_entity(const char *q) {
     /* a few kingdom-life words that do not occur in passage titles but clearly ask about the kingdom ("what can I play?") */
     static const char *domain[] = { "play", "game", "games", "rank", "ranks", "citizen", "citizens", "server", NULL };
-    char w[64]; int wl = 0;
+    static const char *life[] = { "king", "queen", "prince", "princess", "kingdom", "minister", "ministers", "ministry", "cabinet", "parliament", "army", "navy", "airforce", "military", "police",
+        "laws", "law", "anthem", "hymn", "motto", "flag", "capital", "region", "regions", "train", "palace", "castle", "consulate", "royal", NULL };
+    char w[64]; int wl = 0; int wc = -1;
     for (const char *p = q;; p++) {
         if (*p && (isalnum((unsigned char)*p) || *p == '\'')) { if (wl < 63) w[wl++] = *p; }
         else if (wl) { w[wl] = 0; wl = 0; if (strlen(w) >= 3 && is_entity_word(w)) return 1;
-                       for (int i = 0; domain[i]; i++) if (strcasecmp(w, domain[i]) == 0) return 1; }
+                       for (int i = 0; domain[i]; i++) if (strcasecmp(w, domain[i]) == 0) return 1;
+                       for (int i = 0; life[i]; i++) if (strcasecmp(w, life[i]) == 0) { if (wc < 0) wc = world_cue(q) || foreign_proper_noun(q); if (!wc) return 1; } }
         if (!*p) break;
     }
     return 0;
@@ -220,7 +262,18 @@ static int is_arithmetic(const char *q) {
     }
     return 0;
 }
-enum { ROUTE_CHAT = 0, ROUTE_FACTS = 1, ROUTE_OOD = 2 };
+enum { ROUTE_CHAT = 0, ROUTE_FACTS = 1, ROUTE_OOD = 2, ROUTE_WIKI = 3 };
+/* the Wikipedia pack answers a general question when the reader found a span it prefers over "no answer" with decent confidence */
+static int wiki_lookup(Brain *b, const char *q, Answer *ans) {
+    if (!g_wiki) return 0;
+    Answer wa; wiki_answer(g_wiki, b, q, &wa);
+    float thr = getenv("KDR_WIKI_THR") ? (float)atof(getenv("KDR_WIKI_THR")) : 0.45f;
+    /* accepted when the reader prefers the span over "no answer" - or, for a definitional match (the answer is the article's own
+     * subject: "Mercury" from [Mercury (element)] for "which metal is liquid at room temperature"), with a small negative margin */
+    if (wa.n_hits > 0 && wa.answer[0] && wa.confidence >= thr && (wa.span_score >= wa.null_score || (wiki_answer_is_title(&wa) && wa.span_score >= wa.null_score - 6.0f))) { *ans = wa; return 1; }
+    if (getenv("KDR_DEBUG_PROMPT")) fprintf(stderr, "[wiki] rejected: conf %.2f span %.1f null %.1f answer '%s' (%s)\n", wa.confidence, wa.span_score, wa.null_score, wa.answer, wa.title);
+    return 0;
+}
 /* runs retrieval when useful. ROUTE_FACTS: attach ans; ROUTE_CHAT: small talk, no facts; ROUTE_OOD: a real question the wikis
  * do not cover -> the composer answers from its own knowledge and the reply gets flagged "(not from the wikis)" */
 static int route(Brain *b, const char *q, const ChatTurn *turns, int nh, Answer *ans, char *rq, size_t rq_cap) {
@@ -231,7 +284,23 @@ static int route(Brain *b, const char *q, const ChatTurn *turns, int nh, Answer 
     /* a short follow-up ("why that one?", "really?") right after an opinion/small-talk turn stays in chat mode */
     if (nh >= 2 && !has_entity(q) && strlen(q) < 40 && smalltalk_tier(turns[nh - 2].text) == 1) return ROUTE_CHAT;
     if (is_arithmetic(q)) return ROUTE_OOD;
-    brain_answer(b, rq, ans);
+    /* No kingdom entity word in the question: both indexes are consulted. The kingdom wins when its reader is confident
+     * and prefers a span over "no answer" (Firewood Forest, Koninklijke Marechaussee - proper names the title list misses);
+     * otherwise the Wikipedia pack answers (capital of France -> the kingdom reader says "Dunhag" but with span < null). */
+    if (!ent) {
+        brain_answer(b, rq, ans);
+        /* "sure": the reader clearly prefers a span (margin > 8: the kingdom's own facts score 10-15, real-world questions
+         * -5..+7 there), whatever the length-damped confidence says ("Imperial Lines (shipping) and Silver Wings Air" is long) */
+        int kingdom_sure = ans->span_score > ans->null_score + 8.0f && (ans->confidence >= 0.6f || strlen(ans->answer) > 25) && strcasecmp(ans->answer, "Dutch Robloxia") != 0;
+        /* a kingdom passage whose TITLE is in the question ("What is the Royal Bank?" -> passage [Royal Bank]) with a decent
+         * margin also counts: the wiki pack has a "Royal Bank of Scotland" article that would otherwise take over */
+        if (!kingdom_sure && ans->title[0] && ans->span_score > ans->null_score + 4.0f && strlen(ans->title) >= 6 && strcasestr(rq, ans->title)
+            && strcasecmp(ans->title, "Dutch Robloxia") != 0) kingdom_sure = 1;
+        if (!kingdom_sure && ans->n_hits > 0 && ans->hit_title[0] && strlen(ans->hit_title[0]) >= 6 && strcasestr(rq, ans->hit_title[0])
+            && strcasecmp(ans->hit_title[0], "Dutch Robloxia") != 0 && ans->span_score > ans->null_score + 4.0f) kingdom_sure = 1;
+        if (!kingdom_sure) { Answer wa; if (wiki_lookup(b, rq, &wa)) { *ans = wa; return ROUTE_WIKI; } }
+        else if (getenv("KDR_DEBUG_PROMPT")) fprintf(stderr, "[route] kingdom index sure (conf %.2f, span %.1f > null %.1f): %s\n", ans->confidence, ans->span_score, ans->null_score, ans->answer);
+    } else brain_answer(b, rq, ans);
     /* "what's the capital? and who rules there?" - retrieve the second question too and interleave its hits */
     { const char *qm = strchr(q, '?');
       if (qm && qm[1]) {
@@ -264,11 +333,16 @@ static int mentions_kingdom(const char *reply) {
     return 0;
 }
 static const char *OOD_NOTE = " (not from the wikis)";
+static const char *WIKI_NOTE = " (from Wikipedia)";
 /* deterministic provenance flag: the 0.5B composer cannot be trusted to add it itself */
 static int needs_ood_note(int rt, const char *reply) {
     if (rt != ROUTE_OOD || !reply[0]) return 0;
     if (strcasestr(reply, "not from the wiki") || strcasestr(reply, "wikis say")) return 0;
     return !mentions_kingdom(reply);
+}
+static const char *note_for(int rt, const char *reply) {
+    if (rt == ROUTE_WIKI && reply[0] && !strcasestr(reply, "wikipedia")) return WIKI_NOTE;
+    return needs_ood_note(rt, reply) ? OOD_NOTE : NULL;
 }
 
 typedef struct { int fd; int ok; } StreamCtx;
@@ -334,29 +408,29 @@ static void serve(Brain *b, int port) {
                 const char *hdr = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-store\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n";
                 send_all(c, hdr, strlen(hdr));
                 StreamCtx sc = { c, 1 };
-                chat_reply(g_chat, b, facts == ROUTE_FACTS ? &ans : NULL, facts == ROUTE_OOD, q, turns, nh, reply, sizeof reply, stream_piece, &sc, &used, &ms);
-                if (needs_ood_note(facts, reply)) { strncat(reply, OOD_NOTE, sizeof reply - strlen(reply) - 1); stream_piece(OOD_NOTE, &sc); }
+                chat_reply(g_chat, b, facts == ROUTE_FACTS || facts == ROUTE_WIKI ? &ans : NULL, facts == ROUTE_OOD, q, turns, nh, reply, sizeof reply, stream_piece, &sc, &used, &ms);
+                { const char *note = note_for(facts, reply); if (note) { strncat(reply, note, sizeof reply - strlen(reply) - 1); stream_piece(note, &sc); } }
                 char *buf = NULL; size_t bl = 0; FILE *f = open_memstream(&buf, &bl); fputs("data: ", f); write_chat_json(f, b, &ans, q, reply, used, ms); fputs("\n\ndata: [DONE]\n\n", f); fclose(f);
                 send_all(c, buf, bl); free(buf);
             } else {
-                chat_reply(g_chat, b, facts == ROUTE_FACTS ? &ans : NULL, facts == ROUTE_OOD, q, turns, nh, reply, sizeof reply, NULL, NULL, &used, &ms);
-                if (needs_ood_note(facts, reply)) strncat(reply, OOD_NOTE, sizeof reply - strlen(reply) - 1);
+                chat_reply(g_chat, b, facts == ROUTE_FACTS || facts == ROUTE_WIKI ? &ans : NULL, facts == ROUTE_OOD, q, turns, nh, reply, sizeof reply, NULL, NULL, &used, &ms);
+                { const char *note = note_for(facts, reply); if (note) strncat(reply, note, sizeof reply - strlen(reply) - 1); }
                 char *buf = NULL; size_t bl = 0; FILE *f = open_memstream(&buf, &bl); write_chat_json(f, b, &ans, q, reply, used, ms); fclose(f);
                 http_reply(c, 200, "application/json; charset=utf-8", buf, bl); free(buf);
             }
-            fprintf(stderr, "[chat] %-45.45s -> %-50.50s (%s conf %.2f, %.0f ms%s)\n", q, reply, facts == ROUTE_FACTS ? "facts" : facts == ROUTE_OOD ? "ood  " : "chat ", ans.confidence, ms, strcmp(rq, q) ? " +ctx" : "");
+            fprintf(stderr, "[chat] %-45.45s -> %-50.50s (%s conf %.2f, %.0f ms%s)\n", q, reply, facts == ROUTE_FACTS ? "facts" : facts == ROUTE_WIKI ? "wiki " : facts == ROUTE_OOD ? "ood  " : "chat ", ans.confidence, ms, strcmp(rq, q) ? " +ctx" : "");
             free(full);
         } else if (strncmp(path, "/api/ask", 8) == 0) {
             char q[2048] = {0};
             char *qs = strstr(path, "q=");
             if (qs) { snprintf(q, sizeof q, "%s", qs + 2); char *amp = strchr(q, '&'); if (amp) *amp = 0; url_decode(q); }
             else if (strcmp(method, "POST") == 0) { char *body = strstr(req, "\r\n\r\n"); if (body) { body += 4; char *qq = strstr(body, "\"q\":\""); if (qq) { qq += 5; char *e = strchr(qq, '"'); if (e) { size_t l = e - qq; if (l >= sizeof q) l = sizeof q - 1; memcpy(q, qq, l); q[l] = 0; } } } }
-            Answer ans; brain_answer(b, q, &ans);
+            Answer ans; if (!(g_wiki && !has_entity(q) && wiki_lookup(b, q, &ans))) brain_answer(b, q, &ans);
             char *buf = NULL; size_t bl = 0; FILE *f = open_memstream(&buf, &bl); write_answer_json(f, b, &ans, q); fclose(f);
             http_reply(c, 200, "application/json; charset=utf-8", buf, bl); free(buf);
             fprintf(stderr, "[ask] %-50.50s -> %-40.40s (%.0f+%.0f ms, conf %.2f)\n", q, ans.answer, ans.ms_retrieve, ans.ms_read, ans.confidence);
         } else if (strncmp(path, "/api/stats", 10) == 0) {
-            char buf[512]; int l = snprintf(buf, sizeof buf, "{\"passages\":%d,\"ok\":true,\"chat\":%s,\"model\":\"%s\"}", brain_n_passages(b), g_chat ? "true" : "false", g_chat ? chat_model_desc(g_chat) : "");
+            char buf[512]; int l = snprintf(buf, sizeof buf, "{\"passages\":%d,\"ok\":true,\"chat\":%s,\"model\":\"%s\",\"wiki_passages\":%d,\"wiki_articles\":%d}", brain_n_passages(b), g_chat ? "true" : "false", g_chat ? chat_model_desc(g_chat) : "", g_wiki ? wiki_n_passages(g_wiki) : 0, g_wiki ? wiki_n_articles(g_wiki) : 0);
             http_reply(c, 200, "application/json", buf, l);
         } else if (strcmp(path, "/") == 0 || strncmp(path, "/index.html", 11) == 0 || strncmp(path, "/?", 2) == 0) {
             http_reply(c, 200, "text/html; charset=utf-8", kdr_index_html, kdr_index_html_len);
@@ -368,21 +442,29 @@ static void serve(Brain *b, int port) {
 }
 
 int main(int argc, char **argv) {
-    if (argc < 3) { fprintf(stderr, "usage: %s brain.kdr [--chat model.gguf] ask|chat \"question\" | serve PORT | tokens TEXT | bench\n", argv[0]); return 1; }
+    if (argc < 3) { fprintf(stderr, "usage: %s brain.kdr [--chat model.gguf] [--wiki wiki.kdw] ask|chat|wiki \"question\" | serve PORT | tokens TEXT | embed [max_tokens] | bench\n", argv[0]); return 1; }
     int threads = 2; const char *env = getenv("KDR_THREADS"); if (env) threads = atoi(env);
     Brain *b = brain_open(argv[1], threads); if (!b) return 1;
     const char *model = getenv("KDR_CHAT_MODEL");
+    const char *wiki = getenv("KDR_WIKI");
     for (int i = 2; i + 1 < argc; i++) if (strcmp(argv[i], "--chat") == 0) { model = argv[i + 1]; for (int j = i; j + 2 < argc; j++) argv[j] = argv[j + 2]; argc -= 2; break; }
-    if (model && model[0]) { g_chat = chat_open(model, threads, 2048); if (!g_chat) return 1; fprintf(stderr, "composer: %s\n", chat_model_desc(g_chat)); build_entities(b); }
+    for (int i = 2; i + 1 < argc; i++) if (strcmp(argv[i], "--wiki") == 0) { wiki = argv[i + 1]; for (int j = i; j + 2 < argc; j++) argv[j] = argv[j + 2]; argc -= 2; break; }
+    if (model && model[0]) { g_chat = chat_open(model, threads, 2048); if (!g_chat) return 1; fprintf(stderr, "composer: %s\n", chat_model_desc(g_chat)); }
+    if (wiki && wiki[0]) { g_wiki = wiki_open(wiki, b); if (!g_wiki) return 1; fprintf(stderr, "wikipedia pack: %d passages, %d articles\n", wiki_n_passages(g_wiki), wiki_n_articles(g_wiki)); }
+    build_entities(b);
     if (strcmp(argv[2], "ask") == 0 && argc > 3) {
         Answer a; brain_answer(b, argv[3], &a);
+        write_answer_json(stdout, b, &a, argv[3]); printf("\n");
+    } else if (strcmp(argv[2], "wiki") == 0 && argc > 3) {
+        if (!g_wiki) { fprintf(stderr, "no wiki pack: pass --wiki wiki.kdw or set KDR_WIKI\n"); return 1; }
+        Answer a; wiki_answer(g_wiki, b, argv[3], &a);
         write_answer_json(stdout, b, &a, argv[3]); printf("\n");
     } else if (strcmp(argv[2], "chat") == 0 && argc > 3) {
         if (!g_chat) { fprintf(stderr, "no composer: pass --chat model.gguf or set KDR_CHAT_MODEL\n"); return 1; }
         Answer a; char rq[2600]; int facts = route(b, argv[3], NULL, 0, &a, rq, sizeof rq);
         static char reply[8192]; int used = 0; double ms = 0;
-        chat_reply(g_chat, b, facts == ROUTE_FACTS ? &a : NULL, facts == ROUTE_OOD, argv[3], NULL, 0, reply, sizeof reply, NULL, NULL, &used, &ms);
-        if (needs_ood_note(facts, reply)) strncat(reply, OOD_NOTE, sizeof reply - strlen(reply) - 1);
+        chat_reply(g_chat, b, facts == ROUTE_FACTS || facts == ROUTE_WIKI ? &a : NULL, facts == ROUTE_OOD, argv[3], NULL, 0, reply, sizeof reply, NULL, NULL, &used, &ms);
+        { const char *note = note_for(facts, reply); if (note) strncat(reply, note, sizeof reply - strlen(reply) - 1); }
         write_chat_json(stdout, b, &a, argv[3], reply, used, ms); printf("\n");
     } else if (strcmp(argv[2], "tokens") == 0 && argc > 3) {
         int ids[512]; int n = brain_tokenize(b, argv[3], ids, 512);
@@ -390,6 +472,21 @@ int main(int argc, char **argv) {
     } else if (strcmp(argv[2], "retrieve") == 0 && argc > 3) {
         Hit h[8]; int n = brain_retrieve(b, argv[3], h, 8);
         for (int i = 0; i < n; i++) printf("%d\t%.4f\t%.4f\t%.3f\t%s\n", h[i].passage, h[i].score, h[i].dense, h[i].lexical, brain_passage_text(b, h[i].passage));
+    } else if (strcmp(argv[2], "read") == 0 && argc > 4) {
+        /* debug: run the reader on one given passage */
+        Answer a; memset(&a, 0, sizeof a); const char *t = argv[4]; brain_read(b, argv[3], &t, 1, &a);
+        printf("span %.2f null %.2f margin %.2f conf %.2f -> '%s'\n", a.span_score, a.null_score, a.span_score - a.null_score, a.confidence, a.answer);
+    } else if (strcmp(argv[2], "tokenize-lines") == 0) {
+        /* bulk tokenizer for index building: one text per stdin line -> space-separated wordpiece ids per line */
+        static char line[65536]; static int ids[8192];
+        while (fgets(line, sizeof line, stdin)) { size_t l = strlen(line); while (l && (line[l - 1] == '\n' || line[l - 1] == '\r')) line[--l] = 0;
+            int n = brain_tokenize(b, line, ids, 8192); for (int i = 0; i < n; i++) printf(i ? " %d" : "%d", ids[i]); putchar('\n'); }
+    } else if (strcmp(argv[2], "embed") == 0) {
+        /* bulk embedding: one text per stdin line -> 384 little-endian floats per line on stdout (index building) */
+        int maxt = argc > 3 ? atoi(argv[3]) : 192; static char line[65536]; float v[384]; long n = 0;
+        while (fgets(line, sizeof line, stdin)) { size_t l = strlen(line); while (l && (line[l - 1] == '\n' || line[l - 1] == '\r')) line[--l] = 0;
+            brain_embed_text(b, line, maxt, v); fwrite(v, sizeof(float), 384, stdout); if (++n % 1000 == 0) { fprintf(stderr, "\r  embedded %ld", n); fflush(stdout); } }
+        fflush(stdout); fprintf(stderr, "\r  embedded %ld\n", n);
     } else if (strcmp(argv[2], "serve") == 0) {
         serve(b, argc > 3 ? atoi(argv[3]) : 8080);
     } else if (strcmp(argv[2], "bench") == 0) {
@@ -397,5 +494,6 @@ int main(int argc, char **argv) {
         for (int i = 0; i < 3; i++) { Answer a; brain_answer(b, qs[i], &a); printf("%s -> %s  [%.0f ms retrieve, %.0f ms read]\n", qs[i], a.answer, a.ms_retrieve, a.ms_read); }
     } else { fprintf(stderr, "bad command\n"); return 1; }
     if (g_chat) chat_close(g_chat);
+    if (g_wiki) wiki_close(g_wiki);
     brain_close(b); return 0;
 }

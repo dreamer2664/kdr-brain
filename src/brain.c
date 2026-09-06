@@ -331,6 +331,18 @@ static void embed_question(Brain *b, const char *q, float *out) {
     float n = 0; for (int i = 0; i < H; i++) { out[i] /= T; n += out[i] * out[i]; }
     n = sqrtf(n) + 1e-9f; for (int i = 0; i < H; i++) out[i] /= n;
 }
+/* mean-pooled, L2-normalised embedding of any text (used to build passage indexes with the same quantized model) */
+void brain_embed_text(Brain *b, const char *text, int max_tokens, float *out) {
+    if (max_tokens > 510) max_tokens = 510; if (max_tokens < 8) max_tokens = 8;
+    int ids[512]; TokOut t = { ids + 1, NULL, NULL, 0, max_tokens }; tokenize(b, text, &t);
+    int T = t.n + 2; ids[0] = vocab_lookup(b, "[CLS]", 5); ids[T - 1] = vocab_lookup(b, "[SEP]", 5);
+    bert_forward(b, &b->ret, ids, NULL, T);
+    const int H = b->hidden;
+    for (int i = 0; i < H; i++) out[i] = 0;
+    for (int k = 0; k < T; k++) for (int i = 0; i < H; i++) out[i] += b->x[k * H + i];
+    float n = 0; for (int i = 0; i < H; i++) { out[i] /= T; n += out[i] * out[i]; }
+    n = sqrtf(n) + 1e-9f; for (int i = 0; i < H; i++) out[i] /= n;
+}
 /* crude stemming: two wordpieces "match" if one is a prefix of the other (>=4 chars) and they differ by <= 3 chars */
 static int tok_related(Brain *b, int a, int c) {
     if (a == c) return 1;
@@ -405,21 +417,37 @@ static float term_coverage(Brain *b, const int *qids, int nq, const char *text) 
     return tot > 0 ? hit / tot : 1.0f;
 }
 
-void brain_answer(Brain *b, const char *question, Answer *out) {
-    memset(out, 0, sizeof(*out));
+/* same as term_coverage but with an external (e.g. Wikipedia) postings table for the idf weights */
+float brain_term_coverage_ext(Brain *b, const int *qids, int nq, const char *text, const int32_t *terms, const int32_t *dfs, int n_terms, int N) {
+    int tids[512]; int nt = brain_tokenize(b, text, tids, 512);
+    float tot = 0, hit = 0;
+    for (int a = 0; a < nq; a++) {
+        int dup = 0; for (int c = 0; c < a; c++) if (qids[c] == qids[a]) dup = 1;
+        if (dup || is_stop(b, qids[a])) continue;
+        const char *tok = b->vocab_str[qids[a]];
+        if (tok[0] == '#' && tok[1] == '#') continue;
+        int lo = 0, hi = n_terms - 1, ti = -1; while (lo <= hi) { int m = (lo + hi) / 2; if (terms[m] == qids[a]) { ti = m; break; } if (terms[m] < qids[a]) lo = m + 1; else hi = m - 1; }
+        int df = ti < 0 ? 0 : dfs[ti];
+        float idf = logf(1.0f + (N - df + 0.5f) / (df + 0.5f));
+        if (ti < 0 && strlen(tok) <= 3) continue;                    /* very common short words fell out of the df-capped table */
+        tot += idf;
+        for (int i = 0; i < nt; i++) if (tids[i] == qids[a] || tok_related(b, qids[a], tids[i])) { hit += idf; break; }
+    }
+    return tot > 0 ? hit / tot : 1.0f;
+}
+
+int brain_read(Brain *b, const char *question, const char **texts, int n_texts, Answer *out) {
     double t0 = now_ms();
-    out->n_hits = brain_retrieve(b, question, out->hits, 8);
-    out->ms_retrieve = now_ms() - t0; t0 = now_ms();
-    /* context = top unique passages concatenated; remember segment boundaries */
-    char ctx[8192]; int clen = 0; int seg_start[8], seg_end[8], seg_pass[8], nseg = 0;
-    for (int h = 0; h < out->n_hits && nseg < 6; h++) {
-        const char *t = b->p_text[out->hits[h].passage]; size_t tl = strlen(t);
+    /* context = unique passages concatenated; remember segment boundaries */
+    char ctx[8192]; int clen = 0; int seg_start[8], seg_end[8], seg_idx[8], nseg = 0;
+    for (int h = 0; h < n_texts && nseg < 6; h++) {
+        const char *t = texts[h]; size_t tl = strlen(t);
         int dup = 0;
-        for (int s = 0; s < nseg; s++) { const char *u = b->p_text[seg_pass[s]]; if (strcasestr(u, t) || strcasestr(t, u)) { dup = 1; break; } }
+        for (int s = 0; s < nseg; s++) { const char *u = texts[seg_idx[s]]; if (strcasestr(u, t) || strcasestr(t, u)) { dup = 1; break; } }
         if (dup) continue;
         if (clen + (int)tl + 2 >= (int)sizeof(ctx)) break;
         if (clen) ctx[clen++] = ' ';
-        seg_start[nseg] = clen; memcpy(ctx + clen, t, tl); clen += tl; seg_end[nseg] = clen; seg_pass[nseg] = out->hits[h].passage; nseg++;
+        seg_start[nseg] = clen; memcpy(ctx + clen, t, tl); clen += tl; seg_end[nseg] = clen; seg_idx[nseg] = h; nseg++;
     }
     ctx[clen] = 0;
     /* question + context -> reader */
@@ -442,17 +470,23 @@ void brain_answer(Brain *b, const char *question, Answer *out) {
         st[t] = s; en[t] = e;
     }
     out->null_score = st[0] + en[0];
+    /* a span made only of question words ("the speed of light" for "what is the speed of light") is an echo, not an answer */
+    static unsigned char inq[512];
+    for (int t = cstart; t < T; t++) { inq[t] = 0; for (int i = 0; i < nq; i++) if (qids[i] == ids[t]) { inq[t] = 1; break; } }
     float best = -1e30f; int bi = -1, bj = -1;
     for (int i = cstart; i < T - 1; i++) {
         if (os_[i] < 0) continue;
+        int echo = 1;
         for (int j = i; j < T - 1 && j < i + 24; j++) {
-            if (oe[j] < 0) continue;
+            if (!inq[j]) echo = 0;
+            if (oe[j] < 0 || echo) continue;
             float sc = st[i] + en[j];
             if (sc > best) { best = sc; bi = i; bj = j; }
         }
     }
     out->span_score = best;
-    float coverage = 0;
+    float coverage = 0; int seg_ret = -1;
+    out->answer[0] = 0; out->sentence[0] = 0;
     if (bi >= 0) {
         int a = os_[bi], z = oe[bj];
         int seg = 0; for (int s = 0; s < nseg; s++) if (a >= seg_start[s] && a < seg_end[s]) seg = s;
@@ -460,11 +494,8 @@ void brain_answer(Brain *b, const char *question, Answer *out) {
         int len = z - a; if (len > 500) len = 500; if (len < 0) len = 0;
         memcpy(out->answer, ctx + a, len); out->answer[len] = 0;
         while (len > 0 && (out->answer[len - 1] == ' ' || out->answer[len - 1] == '.' || out->answer[len - 1] == ',' || out->answer[len - 1] == ';')) out->answer[--len] = 0;
-        int p = seg_pass[seg];
-        snprintf(out->sentence, sizeof(out->sentence), "%s", b->p_text[p]);
-        snprintf(out->title, sizeof(out->title), "%s", b->p_title[p]);
-        snprintf(out->url, sizeof(out->url), "%s", b->p_url[p]);
-        snprintf(out->source, sizeof(out->source), "%s", b->p_source[p]);
+        snprintf(out->sentence, sizeof(out->sentence), "%s", texts[seg_idx[seg]]);
+        seg_ret = seg_idx[seg];
         coverage = term_coverage(b, qids, nq, ctx);                  /* against everything the reader saw */
     }
     /* confidence: reader margin (does it prefer an answer over "no answer"?), dense similarity, term coverage */
@@ -476,4 +507,26 @@ void brain_answer(Brain *b, const char *question, Answer *out) {
     { size_t al = strlen(out->answer), sl = strlen(out->sentence);
       if (sl && (al > 0.6 * sl || al > 140)) out->confidence *= 0.6f; }
     out->ms_read = now_ms() - t0;
+    return seg_ret;
 }
+
+void brain_answer(Brain *b, const char *question, Answer *out) {
+    memset(out, 0, sizeof(*out));
+    double t0 = now_ms();
+    out->n_hits = brain_retrieve(b, question, out->hits, 8);
+    out->ms_retrieve = now_ms() - t0;
+    const char *texts[8];
+    for (int h = 0; h < out->n_hits; h++) {
+        int p = out->hits[h].passage;
+        texts[h] = b->p_text[p]; out->hit_text[h] = b->p_text[p]; out->hit_title[h] = b->p_title[p]; out->hit_url[h] = b->p_url[p]; out->hit_source[h] = b->p_source[p];
+    }
+    int seg = brain_read(b, question, texts, out->n_hits, out);
+    if (seg >= 0) {
+        int p = out->hits[seg].passage;
+        snprintf(out->title, sizeof(out->title), "%s", b->p_title[p]);
+        snprintf(out->url, sizeof(out->url), "%s", b->p_url[p]);
+        snprintf(out->source, sizeof(out->source), "%s", b->p_source[p]);
+    }
+}
+const char *brain_vocab_str(const Brain *b, int id) { return id >= 0 && id < b->vocab ? b->vocab_str[id] : ""; }
+int brain_is_stop(const Brain *b, int id) { for (int i = 0; i < b->n_stop; i++) if (b->stop_ids[i] == id) return 1; return 0; }

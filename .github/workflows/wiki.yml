@@ -1,0 +1,68 @@
+# Builds the general-knowledge pack (release/wiki.kdw) from a Kiwix Wikipedia ZIM and attaches it to the rolling
+# release "wiki" (separate from "latest", which the build workflow recreates on every push).
+# Manual trigger only: it takes ~1.5 h on the free 4-vCPU runner (embedding 215k passages with the C engine).
+name: wiki-pack
+
+on:
+  workflow_dispatch:
+    inputs:
+      zim_url:
+        description: Kiwix ZIM to index
+        default: https://download.kiwix.org/zim/wikipedia/wikipedia_en_top_mini_2026-06.zim
+      dims:
+        description: PCA dimensions of the passage embeddings (128 = 27 MB, 192 = 41 MB)
+        default: "128"
+
+permissions:
+  contents: write
+
+jobs:
+  wiki:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install numpy libzim zstandard
+
+      - name: Fetch the current brain.kdr (same retriever weights as the shipped engine)
+        run: |
+          mkdir -p release
+          curl -fL --retry 3 -o release/brain.kdr https://github.com/${{ github.repository }}/releases/latest/download/brain.kdr
+          ls -la release
+
+      - name: Compile the chat-less engine (embedding + tokenizer + wiki reader)
+        run: make lite && ls -la release
+
+      - name: Download the ZIM
+        run: |
+          mkdir -p /tmp/wiki
+          curl -fL --retry 3 -o /tmp/wiki/dump.zim "${{ github.event.inputs.zim_url }}"
+          ls -la /tmp/wiki
+
+      - name: Extract passages
+        run: python3 scripts/wiki_extract.py /tmp/wiki/dump.zim /tmp/wiki/ext
+
+      - name: Shuffle articles + split for parallel embedding
+        run: python3 scripts/wiki_prepare.py /tmp/wiki/ext 4
+
+      - name: Embed all passages with the C engine (4 processes)
+        run: sh scripts/wiki_embed_local.sh /tmp/wiki/ext 4
+
+      - name: Pack -> release/wiki.kdw
+        run: python3 scripts/wiki_pack.py /tmp/wiki/ext release/wiki.kdw --dims ${{ github.event.inputs.dims }} && ls -la release
+
+      - name: Retrieval+reader check on the general-knowledge set
+        run: python3 scripts/eval_wiki.py tests/general.txt --wiki release/wiki.kdw
+
+      - name: Publish rolling release "wiki"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete wiki -y --cleanup-tag || true
+          sleep 3
+          gh release create wiki release/wiki.kdw \
+            --title "wiki pack ($(date -u +%Y-%m-%d))" \
+            --notes "General-knowledge pack built from ${{ github.event.inputs.zim_url }} (commit ${{ github.sha }}). Load with: kdr-brain brain.kdr --chat composer.gguf --wiki wiki.kdw serve 8080"

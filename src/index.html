@@ -33,6 +33,7 @@ details li{margin:4px 0}
 .reply{margin:0;font-size:16.5px;white-space:pre-wrap}
 .reply.cursor::after{content:"▍";color:var(--gold);animation:b 1s infinite}
 .pill.flag{border-color:#7a6bd6;color:#b3a8f0}
+.pill.wiki{border-color:#4f8fd6;color:#9cc4f0}
 .fact{margin-top:8px;padding:8px 12px;border-left:2px solid var(--gold);background:#181310;border-radius:0 8px 8px 0;font-size:13px}
 .fact .ans{font-size:14px;margin:0 0 2px}
 form{position:fixed;left:0;right:0;bottom:0;background:linear-gradient(transparent,var(--bg) 30%);padding:26px 16px 18px}
@@ -58,7 +59,7 @@ form{position:fixed;left:0;right:0;bottom:0;background:linear-gradient(transpare
 <main id="log">
   <div class="msg bot"><div class="who">♛</div><div class="bubble">
     <p class="reply">Leve Goudhof! I'm KDR Brain. Ask me anything about the Kingdom of Dutch Robloxia — or just say hi.</p>
-    <p class="ev" style="font-size:13px;color:var(--faint)">Kingdom answers come from the Fandom wiki, kdrwiki.netlify.app and dutchbloxia.netlify.app (source shown under each reply). Anything else I answer from general knowledge and mark it <span class="pill flag">not from the wikis</span>.</p>
+    <p class="ev" style="font-size:13px;color:var(--faint)">Kingdom answers come from the Fandom wiki, kdrwiki.netlify.app and dutchbloxia.netlify.app (source shown under each reply). General questions are looked up in an offline Wikipedia pack and marked <span class="pill wiki">from Wikipedia</span>; anything else I answer from general knowledge and mark it <span class="pill flag">not from the wikis</span>.</p>
   </div></div>
 </main>
 <form id="f" autocomplete="off">
@@ -73,7 +74,7 @@ form{position:fixed;left:0;right:0;bottom:0;background:linear-gradient(transpare
 const log=document.getElementById('log'),f=document.getElementById('f'),qi=document.getElementById('q'),btn=document.getElementById('send');
 const samples=["Hi! Who are you?","What roles does Leonard II have?","Tell me about the Buizerd","Which regions have governors?","How do I join the military?","What are the laws of the realm?","Who bought Vaderveen and when?","What's 17 × 23?","Tell me a fun fact about the kingdom"];
 const chips=document.getElementById('chips');samples.forEach(s=>{const c=document.createElement('span');c.className='chip';c.textContent=s;c.onclick=()=>{qi.value=s;f.requestSubmit()};chips.appendChild(c)});
-let CHAT=false;fetch('api/stats').then(r=>r.json()).then(j=>{CHAT=!!j.chat;document.getElementById('foot').textContent=j.passages+' knowledge passages · MiniLM retriever + reader (int8, 58 MB)'+(j.chat?' · composer '+j.model.split(' ')[0]+' (Q4, 398 MB)':' · retrieval-only mode')}).catch(()=>{});
+let CHAT=false;fetch('api/stats').then(r=>r.json()).then(j=>{CHAT=!!j.chat;document.getElementById('foot').textContent=j.passages+' kingdom passages'+(j.wiki_passages?' · '+j.wiki_articles.toLocaleString()+' Wikipedia articles':'')+' · MiniLM retriever + reader (int8, 58 MB)'+(j.chat?' · composer '+j.model.split(' ')[0]+' (Q4, 398 MB)':' · retrieval-only mode')}).catch(()=>{});
 const history=[];
 function esc(s){return s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 function add(html,cls){const d=document.createElement('div');d.className='msg '+cls;d.innerHTML='<div class="who">'+(cls==='user'?'✦':'♛')+'</div><div class="bubble">'+html+'</div>';log.appendChild(d);window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'});return d}
@@ -81,7 +82,7 @@ function highlight(sentence,answer){if(!answer)return esc(sentence);const i=sent
 function render(j){
   const conf=j.confidence,cls=conf>0.6?'ok':conf>0.35?'warn':'bad',label=conf>0.6?'confident':conf>0.35?'probably':'unsure';
   let h='';
-  const src={fandom:'Fandom wiki',kdrwiki:'kdrwiki.netlify.app',dutchbloxia:'dutchbloxia.netlify.app',summary:'summary of the wikis'}[j.source]||j.source;
+  const src={fandom:'Fandom wiki',kdrwiki:'kdrwiki.netlify.app',dutchbloxia:'dutchbloxia.netlify.app',summary:'summary of the wikis',wikipedia:'Wikipedia'}[j.source]||j.source;
   if(conf<0.22||!j.answer){h+='<p class="unsure">I could not find that in the Dutch Robloxia wikis. The closest thing I know:</p>'}
   else{h+='<p class="ans">'+esc(j.answer)+'</p>'}
   if(j.sentence)h+='<p class="ev">'+highlight(j.sentence,j.answer)+'</p>';
@@ -93,7 +94,7 @@ function render(j){
 function factCard(j){
   const r=j.retrieval;if(!r||!j.used_facts)return '';
   const conf=r.confidence,cls=conf>0.6?'ok':conf>0.35?'warn':'bad',label=conf>0.6?'confident':conf>0.35?'probably':'unsure';
-  const src={fandom:'Fandom wiki',kdrwiki:'kdrwiki.netlify.app',dutchbloxia:'dutchbloxia.netlify.app',summary:'summary of the wikis'}[r.source]||r.source;
+  const src={fandom:'Fandom wiki',kdrwiki:'kdrwiki.netlify.app',dutchbloxia:'dutchbloxia.netlify.app',summary:'summary of the wikis',wikipedia:'Wikipedia'}[r.source]||r.source;
   let h='<details><summary>source &amp; evidence · <span class="pill '+cls+'">'+label+' · '+Math.round(conf*100)+'%</span></summary><div class="fact">';
   if(r.answer&&conf>=0.22)h+='<p class="ans">'+esc(r.answer)+'</p>';
   if(r.sentence)h+='<p class="ev">'+highlight(r.sentence,r.answer)+'</p>';
@@ -102,8 +103,10 @@ function factCard(j){
   return h+'</div></details>'}
 function renderReply(el,text,j){
   const flag=/\(not from the wikis\)/i.test(text);text=text.replace(/\s*\(not from the wikis\)\.?/ig,'').trim();
+  const wp=/\(from Wikipedia\)/i.test(text);text=text.replace(/\s*\(from Wikipedia\)\.?/ig,'').trim();
   let h='<p class="reply">'+esc(text)+'</p>';
   if(flag)h+='<div class="meta"><span class="pill flag">not from the wikis</span><span>general knowledge of the small language model — may be imprecise</span></div>';
+  if(wp)h+='<div class="meta"><span class="pill wiki">from Wikipedia</span><span>looked up in the offline Wikipedia pack (top 50,000 articles)</span></div>';
   if(j)h+=factCard(j);
   el.innerHTML=h}
 async function askChat(q,t){
@@ -114,7 +117,7 @@ async function askChat(q,t){
   while(true){const {value,done}=await reader.read();if(done)break;buf+=dec.decode(value,{stream:true});
     let i;while((i=buf.indexOf('\n\n'))>=0){const ev=buf.slice(0,i).trim();buf=buf.slice(i+2);if(!ev.startsWith('data: '))continue;const d=ev.slice(6);if(d==='[DONE]')continue;
       let o;try{o=JSON.parse(d)}catch(e){continue}
-      if(o.t!==undefined){text+=o.t;p.textContent=text.replace(/\s*\(not from the wikis\)\.?/ig,'');window.scrollTo({top:document.body.scrollHeight})}else if(o.reply!==undefined)final=o}}
+      if(o.t!==undefined){text+=o.t;p.textContent=text.replace(/\s*\((not from the wikis|from Wikipedia)\)\.?/ig,'');window.scrollTo({top:document.body.scrollHeight})}else if(o.reply!==undefined)final=o}}
   const reply=final?final.reply:text;renderReply(t.querySelector('.bubble'),reply,final);
   history.push({role:'user',text:q},{role:'assistant',text:reply.replace(/\s*\(not from the wikis\)\.?/ig,'')});}
 f.addEventListener('submit',async e=>{e.preventDefault();const q=qi.value.trim();if(!q)return;add('<p style="margin:0">'+esc(q)+'</p>','user');qi.value='';btn.disabled=true;

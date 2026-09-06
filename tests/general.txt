@@ -1,0 +1,64 @@
+# General knowledge — scored set (answers must come from the Wikipedia pack, not the composer's memory).
+# Format:  question | accepted answer 1 ; accepted answer 2 ; ...
+# A reply scores 1 if it contains ANY accepted phrase (case-insensitive). Lines starting with # are ignored.
+# Target: >= 9/10 per block of 10.
+
+## Geography
+What is the capital of Australia? | Canberra
+Which is the longest river in the world? | Nile ; Amazon
+What is the highest mountain on Earth? | Everest
+Which ocean is the largest? | Pacific
+What is the capital of Canada? | Ottawa
+Which country has the largest population in the world? | India ; China
+What is the smallest country in the world? | Vatican
+In which country is the city of Marrakesh? | Morocco
+Which desert is the largest hot desert in the world? | Sahara
+What is the capital of Japan? | Tokyo
+
+## Science & nature
+What is the chemical symbol for gold? | Au
+How many planets are in the Solar System? | eight ; 8
+What gas do plants absorb from the air during photosynthesis? | carbon dioxide ; CO2
+What is the largest organ of the human body? | skin
+At what temperature does water boil at sea level in Celsius? | 100
+What is the hardest natural substance? | diamond
+Which planet is known as the Red Planet? | Mars
+What is the speed of light in a vacuum, roughly? | 299,792 ; 300,000 ; 3 × 10 ; 186,000 ; billion kilometres per hour ; billion km
+What is the powerhouse of the cell? | mitochondri
+How many bones does an adult human have? | 206
+
+## History
+In which year did World War II end? | 1945
+Who was the first person to walk on the Moon? | Armstrong
+In which year did the Berlin Wall fall? | 1989
+Who was the first President of the United States? | Washington
+Which empire was ruled by Julius Caesar's successor Augustus? | Roman
+In what year did the Titanic sink? | 1912
+Who painted the Mona Lisa? | Leonardo ; da Vinci
+Which ancient wonder was located in Alexandria? | Lighthouse ; Pharos
+In which year did the French Revolution begin? | 1789
+Who invented the telephone? | Bell
+
+## People & culture
+Who wrote Romeo and Juliet? | Shakespeare
+Who developed the theory of relativity? | Einstein
+Who is the author of the Harry Potter books? | Rowling
+Which composer wrote the Ninth Symphony with the Ode to Joy? | Beethoven
+Who founded Microsoft? | Gates ; Allen
+Who was the first woman to win a Nobel Prize? | Curie
+Which band released the album Abbey Road? | Beatles
+Who directed the film Jaws? | Spielberg
+Who wrote the novel 1984? | Orwell
+Who was the lead singer of Queen? | Mercury
+
+## Everyday knowledge
+How many continents are there? | seven ; 7
+How many days are in a leap year? | 366
+What is the currency of Japan? | yen
+What language has the most native speakers in the world? | Mandarin ; Chinese
+How many players are on a soccer team on the field? | eleven ; 11
+What is the main ingredient of guacamole? | avocado
+What is the tallest animal in the world? | giraffe
+How many strings does a standard guitar have? | six ; 6
+What is the largest mammal? | blue whale
+Which metal is liquid at room temperature? | mercury
