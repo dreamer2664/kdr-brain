@@ -168,6 +168,32 @@ static int wiki_retrieve(Wiki *w, Brain *b, const char *question, Hit *hits, int
     return n;
 }
 
+/* phrase match: longest run of consecutive question wordpieces that also occurs in the text, as a fraction of the question's
+ * length (leading wh-word/auxiliary and the final '?' excluded). "the longest river in the world" is found whole in [Nile]
+ * (1.0) but only as "river in the world" in [Tributary] (0.67) or "in the world" in [Amazon River] (0.5). */
+static float phrase_match(Brain *b, const int *qids, int nq, const char *text) {
+    int tids[512]; int nt = brain_tokenize(b, text, tids, 512);
+    int q0 = 0, q1 = nq;
+    if (q1 > 0 && strcmp(brain_vocab_str(b, qids[q1 - 1]), "?") == 0) q1--;
+    static const char *lead[] = { "what", "which", "who", "where", "when", "how", "why", "is", "are", "was", "were", "does", "do", "did", "many", "much", "the", "s", "'", NULL };
+    while (q0 < q1) { const char *t = brain_vocab_str(b, qids[q0]); int hit = 0; for (int i = 0; lead[i]; i++) if (strcmp(t, lead[i]) == 0) { hit = 1; break; } if (!hit) break; q0++; }
+    int n = q1 - q0; if (n <= 0) return 0;
+    int best = 0;
+    for (int i = 0; i < nt; i++) {
+        for (int j = q0; j < q1; j++) {
+            if (tids[i] != qids[j]) continue;
+            int l = 1; while (i + l < nt && j + l < q1 && tids[i + l] == qids[j + l]) l++;
+            if (l > best) best = l;
+        }
+    }
+    return (float)best / (float)n;
+}
+
+void wiki_retrieve_debug(Wiki *w, Brain *b, const char *question, int k) {
+    Hit h[64]; if (k > 64) k = 64; int n = wiki_retrieve(w, b, question, h, k, 2);
+    for (int i = 0; i < n; i++) printf("%2d %.3f d%.3f l%5.1f [%s] %.80s\n", i, h[i].score, h[i].dense, h[i].lexical, wiki_passage_title(w, h[i].passage), wiki_passage_text(w, h[i].passage));
+}
+
 /* is the extracted answer the article's own subject? ("Giraffe" from [Giraffe], "Mercury" from [Mercury (element)]) */
 static int answer_is_title(const char *answer, const char *title) {
     char tn[160], an[160]; size_t o = 0;
@@ -180,6 +206,17 @@ static int answer_is_title(const char *answer, const char *title) {
     return la >= 3 && lt >= 3 && (strcmp(an, tn) == 0 || (la >= lt && la - lt <= 1 && strncmp(an, tn, lt) == 0) || (lt >= la && lt - la <= 1 && strncmp(an, tn, la) == 0));
 }
 int wiki_answer_is_title(const Answer *a) { return a->answer[0] && a->title[0] && answer_is_title(a->answer, a->title); }
+/* a bare pronoun extracted from an article's own text refers to the article's subject: replace it by the title (no parenthetical) */
+static void resolve_pronoun(Answer *a, const char *title) {
+    static const char *pron[] = { "it", "they", "he", "she", "this", "these", "the city", "the country", "the species", NULL };
+    char an[64]; size_t o = 0; for (const char *r = a->answer; *r && o < sizeof an - 1; r++) an[o++] = (char)tolower((unsigned char)*r); an[o] = 0;
+    while (o && (an[o - 1] == ' ' || an[o - 1] == '.')) an[--o] = 0;
+    for (int i = 0; pron[i]; i++) if (strcmp(an, pron[i]) == 0) {
+        size_t l = 0; while (title[l] && title[l] != '(') l++; while (l && title[l - 1] == ' ') l--;
+        if (l >= 2 && l < sizeof a->answer) { memcpy(a->answer, title, l); a->answer[l] = 0; }
+        return;
+    }
+}
 
 /* crude sentence splitter: ". " / "? " / "! " followed by an upper-case letter, digit, quote or bracket; skips initials/abbreviations */
 static int split_sentences(const char *text, int *starts, int *ends, int max) {
@@ -200,8 +237,29 @@ static int split_sentences(const char *text, int *starts, int *ends, int max) {
 void wiki_answer(Wiki *w, Brain *b, const char *question, Answer *out) {
     memset(out, 0, sizeof *out); out->kind = 1;
     double t0 = now_ms();
-    out->n_hits = wiki_retrieve(w, b, question, out->hits, 8, 2);
+    /* a wide candidate list (24, <= 2 per article) is re-ranked by question-term coverage before reading: at 215k passages a
+     * global superlative ("longest river in the world") drowns in "longest river in Spain/Asia/..." passages and the right
+     * article sits at rank 9-20; coverage is a tokenizer-only check, so it is cheap where reading (~150 ms each) is not */
+    int npre = getenv("KDR_WIKI_NPRE") ? atoi(getenv("KDR_WIKI_NPRE")) : 24; if (npre > 32) npre = 32; if (npre < 8) npre = 8;
+    float wpre = getenv("KDR_WIKI_WPRE") ? (float)atof(getenv("KDR_WIKI_WPRE")) : 0.15f;
+    Hit pre[32]; int np = wiki_retrieve(w, b, question, pre, npre, 2);
     out->ms_retrieve = now_ms() - t0; t0 = now_ms();
+    {
+        int qids0[64]; int nq0 = brain_tokenize(b, question, qids0, 62); float ps[32]; char pb[2048];
+        float wphr = getenv("KDR_WIKI_WPHR") ? (float)atof(getenv("KDR_WIKI_WPHR")) : 0.3f;
+        for (int i = 0; i < np; i++) {
+            snprintf(pb, sizeof pb, "%s: %s", wiki_passage_title(w, pre[i].passage), wiki_passage_text(w, pre[i].passage));
+            ps[i] = pre[i].score + wpre * brain_term_coverage_ext(b, qids0, nq0, pb, w->bm_terms, w->bm_df, w->n_terms, w->N)
+                  + wphr * phrase_match(b, qids0, nq0, pb);
+        }
+        /* stable selection sort of the top 8 by ps */
+        out->n_hits = 0;
+        for (int k = 0; k < 8 && k < np; k++) {
+            int bi = -1; for (int i = 0; i < np; i++) if (ps[i] > -1e29f && (bi < 0 || ps[i] > ps[bi])) bi = i;
+            if (bi < 0) break;
+            out->hits[out->n_hits] = pre[bi]; out->hits[out->n_hits].score = ps[bi]; out->n_hits++; ps[bi] = -1e30f;
+        }
+    }
     /* Passage texts come from the block cache (16 slots >= 8 hits, so all pointers stay valid during the read). */
     for (int h = 0; h < out->n_hits; h++) {
         int p = out->hits[h].passage;
@@ -211,11 +269,12 @@ void wiki_answer(Wiki *w, Brain *b, const char *question, Answer *out) {
     /* Each of the top-K passages is read on its own, prefixed with its article title ("Blue whale: The blue whale is ...");
      * a single concatenated read lets the first passage dominate ("largest mammal" -> "rodents, bats" from [Mammal] while
      * [Blue whale] sits at rank 2). The winner is the passage with the best reader margin, nudged by retrieval score. */
-    int K = getenv("KDR_WIKI_READK") ? atoi(getenv("KDR_WIKI_READK")) : 6; if (K > out->n_hits) K = out->n_hits; if (K > 8) K = 8;
+    int K = getenv("KDR_WIKI_READK") ? atoi(getenv("KDR_WIKI_READK")) : 8; if (K > out->n_hits) K = out->n_hits; if (K > 8) K = 8;
     float wret = getenv("KDR_WIKI_WRET") ? (float)atof(getenv("KDR_WIKI_WRET")) : 12.0f;
     float wcov = getenv("KDR_WIKI_WCOV") ? (float)atof(getenv("KDR_WIKI_WCOV")) : 15.0f;
     float wvote = getenv("KDR_WIKI_WVOTE") ? (float)atof(getenv("KDR_WIKI_WVOTE")) : 0.5f;
     float wtitle = getenv("KDR_WIKI_WTITLE") ? (float)atof(getenv("KDR_WIKI_WTITLE")) : 3.0f;
+    float wphr2 = getenv("KDR_WIKI_WPHR2") ? (float)atof(getenv("KDR_WIKI_WPHR2")) : 0.0f;
     Answer cand[8]; float sc[8], margin[8], covs[8]; char norm[8][160]; int nc = 0, cand_h[8];
     char buf[2048]; int qids[64]; int nq = brain_tokenize(b, question, qids, 62);
     /* KDR_WIKI_WIN: 0 = read the whole passage; 1 = read only the sentence with the best question-term coverage;
@@ -247,6 +306,7 @@ void wiki_answer(Wiki *w, Brain *b, const char *question, Answer *out) {
             }
         }
         if (seg < 0 || !a->answer[0]) continue;
+        resolve_pronoun(a, out->hit_title[h]);
         /* the span may start on the "Title: " prefix we added: drop it */
         { size_t tl = strlen(out->hit_title[h]); if (strncmp(a->answer, out->hit_title[h], tl) == 0 && a->answer[tl] == ':') { memmove(a->answer, a->answer + tl + 1, strlen(a->answer + tl + 1) + 1); while (a->answer[0] == ' ') memmove(a->answer, a->answer + 1, strlen(a->answer)); } }
         if (!a->answer[0]) continue;
@@ -254,7 +314,7 @@ void wiki_answer(Wiki *w, Brain *b, const char *question, Answer *out) {
          * however confident the reader is. Coverage is idf-weighted against the wiki's own postings. */
         margin[nc] = a->span_score - a->null_score;
         float cov = brain_term_coverage_ext(b, qids, nq, buf, w->bm_terms, w->bm_df, w->n_terms, w->N);
-        sc[nc] = margin[nc] + wret * (out->hits[h].score - out->hits[0].score) + wcov * (cov - 1.0f); covs[nc] = cov;
+        sc[nc] = margin[nc] + wret * (out->hits[h].score - out->hits[0].score) + wcov * (cov - 1.0f) + wphr2 * (phrase_match(b, qids, nq, buf) - 1.0f); covs[nc] = cov;
         /* definitional match: the extracted answer is the article's own subject ("Giraffe" from [Giraffe], "Mercury" from
          * [Mercury (element)]) - lead sentences define their subject, which is exactly what "what/which is the ..." asks for */
         if (wtitle > 0 && answer_is_title(a->answer, out->hit_title[h])) sc[nc] += wtitle;
@@ -293,6 +353,7 @@ void wiki_answer(Wiki *w, Brain *b, const char *question, Answer *out) {
             char wb[2048]; snprintf(wb, sizeof wb, "%s: %.*s", out->hit_title[h], en[bsn] - st[bsn], out->hit_text[h] + st[bsn]);
             Answer a2; memset(&a2, 0, sizeof a2); a2.n_hits = 1; a2.hits[0] = out->hits[h]; const char *t2 = wb;
             if (brain_read(b, question, &t2, 1, &a2) < 0 || !a2.answer[0]) continue;
+            resolve_pronoun(&a2, out->hit_title[h]);
             float m2 = a2.span_score - a2.null_score;
             float s2 = m2 + wret * (out->hits[h].score - out->hits[0].score) + wcov * (bc - 1.0f) + (wtitle > 0 && answer_is_title(a2.answer, out->hit_title[h]) ? wtitle : 0);
             if (getenv("KDR_DEBUG_PROMPT")) fprintf(stderr, "[wiki-read2] #%d %-28.28s margin %6.2f cov %.2f score %6.2f '%s'\n", h, out->hit_title[h], m2, bc, s2, a2.answer);

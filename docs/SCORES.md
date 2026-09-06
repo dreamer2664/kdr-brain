@@ -80,17 +80,24 @@ reader margin + 12·(retrieval score − top score) + 15·(question-term coverag
 own subject + 0.5·(margins of other passages that extracted the same answer). If no candidate has a positive margin,
 each passage's best sentence is re-read alone. Winner ≥ 0.45 confidence → composer prompt with ≤ 3 Wikipedia facts.
 
-Development pack = every article embedded so far (15,174 articles / 65,256 passages, 30% of the dump) plus the articles the
-test questions need. Retrieval + reader alone (`eval_wiki.py`): **48/50**; whole pipeline with the composer:
+Full pack (`release/wiki.kdw`, 81.8 MB: 49,999 articles / 215,206 passages, built by the wiki-pack workflow in 52 min
+on GitHub Actions). Retrieval + reader alone (`eval_wiki.py`): 43/50; whole pipeline with the composer:
 
 ```
-== general.txt   (15k-article pack)
-   9/10  Geography             smallest country → Vatican City is right now; it was 9/10 before the sentence re-read
+== general.txt   (full pack, 2 vCPU sandbox, avg 4.1 s per reply)
+   8/10  Geography             largest population → Mexico (the intro of [India] never says "most populous"; [China] says "second"); smallest country → Palau
    9/10  Science & nature      "largest organ" → the Bone article's "femur" (the Skin intro never says "largest organ")
   10/10  History
   10/10  People & culture
-   8/10  Everyday knowledge    guacamole (no Avocado article in the pack yet), "most native speakers" (no list article)
+   7/10  Everyday knowledge    most native speakers → Marathi (no list article), soccer players → "four" (Alex Morgan's book), guacamole (no Avocado intro mentions it)
+== kingdom.txt  70/70   == chat.txt  40/40     (with the wiki pack loaded - routing keeps the kingdom intact)
+TOTAL 154/160
 ```
+
+The misses share one shape: a *superlative across many candidates* ("largest population", "smallest country",
+"most native speakers") where the true holder's introduction states it in other words or not at all, while a dozen
+other intros say "the largest population in South America / the smallest country in Africa". An extractive reader
+cannot compare across passages; a list article would answer these, and the mini dump has none of them.
 
 What moved the general-knowledge numbers (each verified on the same 50 questions):
 
@@ -101,7 +108,8 @@ What moved the general-knowledge numbers (each verified on the same 50 questions
 | + "Title: " prefix on every passage (intros say "He was born…" without the name) | 38/50 |
 | + question-term coverage penalty (idf-weighted) | 42/50 |
 | + answer voting across passages | 45/50 |
-| + retrieval weight 12, article-subject bonus 3, sentence re-read when all margins ≤ 0 | 48/50 |
+| + retrieval weight 12, article-subject bonus 3, sentence re-read when all margins ≤ 0 | 48/50 (dev pack, 15k articles) |
+| full 50k-article pack: 24-candidate pre-ranking by term coverage + phrase match, 8 reads, pronoun → article title | 40 → 43/50 |
 | dims 128 vs 192 vs 384 | identical – 128 kept (27 MB instead of 41/82) |
 
 Composer-side fixes: at most 3 Wikipedia facts (200 chars each, winner first) — six long facts made the 0.5B model
@@ -110,7 +118,7 @@ restate "the Wikipedia fact states…" or copy the article lead; grounding check
 Routing fixes so the kingdom stays intact: ordinary English title words (country, army, standard, company…) are not
 entities; the kingdom index wins only with a clear reader margin (> 8) or when its passage title is in the question
 ("What is the Royal Bank?" stays in the kingdom instead of Royal Bank of Scotland); kingdom.txt 70/70 and chat.txt
-39/40 with the wiki pack loaded (the miss is "spider legs" – the Spider article is not in the 30% dev pack yet).
+40/40 with the full wiki pack loaded.
 
 ## Known misses / not fixable at this size
 

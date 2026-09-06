@@ -19,6 +19,7 @@ const char *wiki_passage_text(Wiki *w, int i);
 const char *wiki_passage_title(const Wiki *w, int i);
 const char *wiki_passage_url(Wiki *w, int i);   /* https://en.wikipedia.org/wiki/<path>, internal buffer */
 int   wiki_has_title(const Wiki *w, const char *word);   /* case-insensitive exact match against article titles */
-int   wiki_answer_is_title(const Answer *a);              /* the extracted answer is the article's own subject ("Giraffe" from [Giraffe]) */
+int   wiki_answer_is_title(const Answer *a);
+void  wiki_retrieve_debug(Wiki *w, Brain *b, const char *question, int k);   /* prints the top-k fused hits */              /* the extracted answer is the article's own subject ("Giraffe" from [Giraffe]) */
 
 #endif

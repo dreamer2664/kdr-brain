@@ -14,7 +14,7 @@ Crawled on 2026-09-05 → **537 knowledge passages** (`data/passages.json`, incl
 
 General knowledge comes from a second, optional pack, `release/wiki.kdw`, built from the Kiwix dump
 `wikipedia_en_top_mini` (the ~50,000 most-read English Wikipedia articles, introductions only, 316 MB ZIM) →
-**215,206 passages** compressed, embedded and indexed (~80 MB). Answers from it are marked "(from Wikipedia)" and show
+**215,206 passages** compressed, embedded and indexed (81.8 MB). Answers from it are marked "(from Wikipedia)" and show
 the article as source; questions about the kingdom still go to the kingdom index (see Routing).
 
 ## Size budget
@@ -29,8 +29,8 @@ release/composer.gguf   397.8 MB   Qwen2.5-0.5B-Instruct, Q4_K_M — turns facts
    everything           464 MB     no Python, no libraries, nothing else needed at runtime
 
 release/kdr-brain-lite    1.5 MB   same engine without llama.cpp (make lite) — brain.kdr + this = the original 60 MB brain
-release/wiki.kdw        ~80 MB    OPTIONAL general-knowledge pack: 215k Wikipedia passages (zstd, 27 MB) + 128-d int8 PCA
-                                  embeddings (28 MB) + varint BM25 postings (20 MB) + titles/tables (5 MB)
+release/wiki.kdw         81.8 MB  OPTIONAL general-knowledge pack: 215k Wikipedia passages (zstd, 27.6 MB) + 128-d int8 PCA
+                                  embeddings (27.5 MB) + varint BM25 postings (20.2 MB) + titles/tables (6.5 MB)
 ```
 
 The wiki pack is deliberately lean: passage vectors are PCA-reduced from 384 to 128 dims (85% of the variance;
@@ -84,9 +84,8 @@ python3 scripts/eval_c.py --strict  # the older extractive test: 75 questions, r
 python3 scripts/eval_wiki.py tests/general.txt --wiki release/wiki.kdw   # wiki retrieval + reader alone, no composer (~1 min)
 ```
 
-Latest run (2 vCPU sandbox): **kingdom 70/70, chat 39/40 — every block ≥ 9/10**, avg 2.8 s per reply
-(details, model comparison and what moved the numbers: `docs/SCORES.md`). With the wiki pack: see the
-"General knowledge" section of `docs/SCORES.md`. Add your own questions to the
+Latest run (2 vCPU sandbox, wiki pack loaded): **kingdom 70/70, chat 40/40, general knowledge 44/50 (blocks 8/9/10/10/7)**,
+avg 2.8 s per kingdom reply, 4.1 s per Wikipedia reply (details, model comparison and what moved the numbers: `docs/SCORES.md`). Add your own questions to the
 `tests/*.txt` files — one line per question, `question | accepted 1 ; accepted 2`.
 
 ## Run it
@@ -145,7 +144,9 @@ overrides the repetition penalty, `KDR_NO_VERIFY=1` disables the grounding retry
   Lisa and the capital of Australia, but not the main ingredient of guacamole (no such article) or facts that live
   deep in an article body. A wrong-but-confident Wikipedia answer is possible when the right article is missing and a
   neighbour reads plausibly ("largest organ" → the Bone article's "femur").
-* Wikipedia answers take ~1.5 s longer than kingdom ones (6–12 separate reader passes).
+* Wikipedia answers take ~1.5 s longer than kingdom ones (8–16 separate reader passes over 24 pre-ranked candidates).
+* Superlatives across many candidates ("which country has the largest population") are the weak spot: the reader
+  can only extract, not compare, and the winning article's intro often words it differently.
 * Some wiki facts contradict each other (e.g. Bjorn is Minister of Defence on Fandom, Defence is vacant on
   dutchbloxia.netlify.app; the Pope's birth year is 1977 vs 1978). The brain answers with whichever passage matches
   best and shows its source under the reply.

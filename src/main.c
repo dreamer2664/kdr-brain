@@ -472,6 +472,9 @@ int main(int argc, char **argv) {
     } else if (strcmp(argv[2], "retrieve") == 0 && argc > 3) {
         Hit h[8]; int n = brain_retrieve(b, argv[3], h, 8);
         for (int i = 0; i < n; i++) printf("%d\t%.4f\t%.4f\t%.3f\t%s\n", h[i].passage, h[i].score, h[i].dense, h[i].lexical, brain_passage_text(b, h[i].passage));
+    } else if (strcmp(argv[2], "wiki-retrieve") == 0 && argc > 3) {
+        if (!g_wiki) { fprintf(stderr, "no wiki pack\n"); return 1; }
+        wiki_retrieve_debug(g_wiki, b, argv[3], argc > 4 ? atoi(argv[4]) : 16);
     } else if (strcmp(argv[2], "read") == 0 && argc > 4) {
         /* debug: run the reader on one given passage */
         Answer a; memset(&a, 0, sizeof a); const char *t = argv[4]; brain_read(b, argv[3], &t, 1, &a);
